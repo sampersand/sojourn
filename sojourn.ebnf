@@ -1,0 +1,121 @@
+(* NB: terminal should include '`' exec-style thing *)
+
+TOP := statements
+
+(*** EXPRESSION ***)
+
+expr
+ := terminal
+  | assignment
+  | field-assignment
+  | fn-call
+  | binary-expr
+  | ternary-expr
+  | (* indexing statements? Also a part of assignment *)
+  ;
+
+statements := { statement } [expr [endline]] ;
+statement := [expr] endline ;
+endline := ';' | '\n' ;
+
+
+fn-call := expr '(' fn-call-args ')' ;
+fn-call-args (* NB trailing comma is optional *)
+ := { ['*'] expr ',' }
+    { ('**' expr | ident '=' expr ) ','}
+    ;
+
+terminal
+ := literal
+  | '(' expr ')'
+  | block
+  | unary-expr
+  ;
+
+ternary-expr := expr '?' expr ':' expr ;
+binary-expr := expr BINARYOP expr ;
+unary-expr := UNARYOP expr ;
+
+(*** CONSTRUCTS ***)
+if-statement := 'if' expr block { elsif-block } [ else-block ] ;
+elsif-block := 'exlif' expr block ;
+else-block := 'else' block ;
+
+while-statement := 'while' expr block [ else-block ] ;
+for-statement := 'for' binding 'in' expr block [ else-block ] ;
+
+try-statement := 'try' block (* at least one of: *) { catch-block } [ finally-block ] ;
+catch-block := 'catch' binding block
+finally-block := 'finally' block
+
+continue-statement := 'continue'
+break-statement := 'break'
+return-statement := 'return'
+
+match-statement := 'match' expr '{' { binding '=>' expr } [ '_' '=>' expr] '}' 
+
+fn-statement := 'fn' ident '(' fn-args ')' [':' type] ( '=' expr | block ) ;
+fn-args (* note that a trailing comma is optional *)
+ := { binding ',' } (* positional *)
+    { binding '=' expr ',' } (* optional *)
+    [ '*' binding ',' ] (* splat. the type, if given, should be Array<T>. Defaults to Array<dyn> *)
+    { binding '?' '*=' [expr] ',' } (* keyword arg, required and optional.  *)
+    [ '**' binding } (* splatsplat. the type, fi given, should be Map<String, T>. Defaults to Map<String, Dyn> *)
+  ;
+
+block := '{' statements '}' ;
+
+(*** ASSIGNMENT ***)
+
+field-assignment := expr '.' { expr '.' } assignment ;
+assignment := binding ASSIGN_OP expr ;
+
+binding := pattern [':' type] ;
+
+(* in the future, this will be expanded to include things like tuples and whatnot *)
+pattern := ['@' ,] ident ;
+
+(* in the future, this will be expanded to include things like tuples and whatnot *)
+type := ident | '_'| '?' ;
+
+(*** LITERALS ***)
+
+literal := text | integer | float | ident | regex | array-literal | map-literal ;
+ident
+ := '_' , ALPHANUM , { ALPHANUM }
+  | (DIGIT | LETTER) , { ALPHANUM } \b
+  ;
+
+(* NP trailing ',' optional *)
+array-literal := '[' { ['*'] expr ',' } ']' ;
+map-literal := '{' { ('**' expr | ident ':' expr ) ',' } '}' ;
+
+string := single-quoted-string | double-quoted-string ;
+single-quoted-string := '\'' , { single-quoted-escapes | /[^']/ } , '\'';
+single-quoted-escapes := '\\' , ('\'' | '\\')
+double-quoted-string := '"' , { double-quoted-escapes | string-interpolation | /[^"]/ } , "'" ;
+double-quoted-escapes
+ := '\\' ,
+  ( '\\' | '"' | '\'' | 'n' | 't' | 'f' | 'r' | '0'
+  | 'x' , HEX_DIGIT , HEX_DIGIT
+  | 'u' , HEX_DIGIT , HEX_DIGIT , HEX_DIGIT , HEX_DIGIT
+  | 'U' <what>
+	) ;
+string-interpolation := '${' expr '}'
+
+(* idea for syntax: `$##/.../##`? *)
+regex := '/' , <regex> , '/'
+
+(* nothing special here *)
+integer
+ := '0' , ('x' | 'X') , HEX_DIGIT { , ('_' | HEX_DIGIT) } \b
+  | '0' , ('o' | 'o') , OCTAL_DIGIT { , ('_' | OCTAL_DIGIT) } \b
+  | '0' , ('b' | 'b') , BINARY_DIGIT { , ('_' | BINARY_DIGIT) } \b
+  | '0' , ('d' | 'D') , digits
+  | digits
+  ;
+float
+  := digits [, '.' , digits] , ('e' | 'E') , ['-' | '+'] digits
+  | digits , '.' , digits
+  ;
+digits := DIGIT { , ('_' | DIGIT) } \b

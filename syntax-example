@@ -1,0 +1,98 @@
+#### TYPING VARIABLES ####
+# You declare types by putting a colon after an identifier.
+life: Int = 42
+
+# You can use the `_` type to have the compiler infer it, if possible
+# Omitting a type is the same as specifying it as `_`
+forty: _ = 40
+two = 2
+
+# You can specify types in expressions to ensure that you have the type correct
+life_squared = life * (forty + two: Int)
+
+# You can always use the special type `?` to cause the compiler to emit what
+# type it's expecting.
+foobar: ? = 12 # => compiler error, found `?`: expecting type Int.
+
+#### DYNAMIC TYPING ####
+# You can also have sojourn determine the types at runtime via the `Dyn` type,
+# which mimics how other scripting languages work. To prevent accidental use of
+# dynamic types everywhere, you must explicitly annotate dynamic types or use
+# the special `@varname` shorthand whenever they're used.
+foo: Dyn = 3
+@foo = 3
+
+# dynamicness is infectious!
+@twice_foo = foo + foo
+
+# You can remove dynamicness by casting types. A runtime `CastError` will be
+# thrown if the casting fails
+something: String = @foo # explicitly
+something = 2 + (@foo: Int) # this also works
+
+#### FUNCTIONS ####
+# Functions are declared with the `fn` keyword.
+
+# You can either define single-expression methods...
+fn square(x) = x ** 2
+
+# ... via braces whitespace ...
+fn square(x) {
+	x ** 2
+}
+
+# ... or via significant whitespace
+fn square(x) do
+	x ** 2
+
+# Like with variables, you can also type functions if you don't want the
+# values inferred
+fn square(x: Int): Int = x ** 2
+
+# Like variables, dynamic parameters and functions must be declared with `dyn`
+fn square(x: Dyn): Dyn = x ** 3
+
+# Or, you can use the `@` shorthand
+fn @square(@x) = x ** 3
+
+## Function Parameters ##
+# In Sojourn, both positional and keyword arguments are allowed.
+fn foo(
+	req,              # required positional argument
+	opt=default,      # optional positional argument, must come after required.
+	*args,            # remaining positional arguments.
+	kwreq *=,         # keyword argument
+	kwopt *= default, # default value for keyword argument
+	**kwargs          # remaining keyword arguments
+) ...
+# You can type them like you'd expect, as well as use the `@` shorthand.
+# The `*args` and `**kwargs` values are always `Array` and `Map`, respectively,
+# but you can annotate if you want.
+fn foo(@req, opt=3, *rest, kwreq: Int *=, kwopt: String *= "a", **kwargs: Map)
+
+# Functions also work with generics:
+fn divmod<T: Div + Mod>(num: T, base: T): (T, T) do
+	(num / base, num % base)
+
+#### Classes ####
+# these have yet to be fully devleoped.
+class Person {
+	# You can declare fields via the `attr` keyword. They must be typed.
+	attr first: String
+	attr last: String
+
+	# You can declare constants with the `const` keyword. And `static`
+	# makes it not part of the class.
+	static const SAYS_WHAT = 'hi'
+
+	# implicit self
+	fn to_s() = self.first + ' ' + self.last
+	fn speak() = print(self, 'says:', SAYS_WHAT)
+
+	fn new(first, last) = ?? # Maybe: Person { first, last }
+}
+
+# Inheritance also works.
+class Child: Person {
+
+}
