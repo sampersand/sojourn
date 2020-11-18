@@ -15,7 +15,6 @@ pub struct File {
 #[derive(Debug)]
 pub enum FileReadError {
 	/// An unknown version was given.
-
 	UnknownVersion([u8; 8]),
 
 	/// The text section couldn't be read.
@@ -26,6 +25,28 @@ pub enum FileReadError {
 
 	/// An i/o problem occurred outside of one of the sections.
 	Io(io::Error)
+}
+
+impl Display for FileReadError {
+	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+		match self {
+			Self::UnknownVersion(version) => write!(f, "unknown sojourn bytecode version: {:?}", version),
+			Self::Text(err) => Display::fmt(err, f),
+			Self::Data(err) => Display::fmt(err, f),
+			Self::Io(err) => Display::fmt(err, f),
+		}
+	}
+}
+
+impl std::error::Error for FileReadError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Self::UnknownVersion(_) => None,
+			Self::Text(err) => Some(err),
+			Self::Data(err) => Some(err),
+			Self::Io(err) => Some(err),
+		}
+	}
 }
 
 impl ReadFrom for File {
