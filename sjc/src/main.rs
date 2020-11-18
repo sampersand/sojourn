@@ -1,6 +1,7 @@
 use sjc::File;
 use read_from::ReadFrom;
 
+//
 fn main() {
 	setup_tracing();
 	let file = File::read_from(std::fs::File::open("../parser-ruby/test.sjc").unwrap()).unwrap();

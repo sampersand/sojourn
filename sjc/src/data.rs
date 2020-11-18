@@ -1,6 +1,5 @@
 use std::io::{self, Read, Write};
 use read_from::{ReadFrom, WriteTo, LittleEndian};
-use crate::utils::read_vec;
 use std::ops::Index;
 use std::fmt::{self, Display, Formatter};
 
@@ -90,8 +89,11 @@ impl ReadFrom for Data {
 						debug!(?err, "unable to read string length.");
 						err
 					})?;
-			match read_vec(len, &mut inp) {
-				Ok(field) => {
+
+			let mut field = vec![0; len];
+
+			match inp.read_exact(&mut field) {
+				Ok(_) => {
 					trace!(?field, "successfully read field.");
 					let _ = data.insert(field);
 				},

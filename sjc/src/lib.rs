@@ -1,3 +1,5 @@
+//! This crate houses all details regarding Sojourn's file format, including [`Instruction`]s.
+
 #[macro_use]
 extern crate tracing;
 
@@ -5,7 +7,6 @@ extern crate static_assertions as sa;
 
 mod text;
 mod data;
-mod utils;
 mod file;
 mod instruction;
 
