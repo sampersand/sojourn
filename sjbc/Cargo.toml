@@ -1,0 +1,12 @@
+[package]
+name = "sjbc"
+version = "0.2.0"
+authors = ["Sam Westerman <sam@sampersand.me>"]
+edition = "2018"
+description = "Sojourn's Bytecode format"
+
+[dependencies]
+static_assertions = "1.1"
+bitflags = "1.2"
+tracing = "0.1"
+read-from = "0.5"

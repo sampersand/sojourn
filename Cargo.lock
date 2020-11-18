@@ -286,26 +286,45 @@ dependencies = [
 ]
 
 [[package]]
-name = "sjc"
+name = "sj-dis"
 version = "0.1.0"
 dependencies = [
- "bitflags",
  "read-from",
- "static_assertions",
+ "sjbc",
  "tracing",
  "tracing-subscriber",
  "tracing-tree",
 ]
 
 [[package]]
+name = "sjbc"
+version = "0.2.0"
+dependencies = [
+ "bitflags",
+ "read-from",
+ "static_assertions",
+ "tracing",
+]
+
+[[package]]
+name = "sjc"
+version = "0.1.0"
+dependencies = [
+ "sjbc",
+]
+
+[[package]]
 name = "sjvm"
 version = "0.1.0"
+dependencies = [
+ "sjbc",
+]
 
 [[package]]
 name = "smallvec"
-version = "1.4.2"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbee7696b84bbf3d89a1c2eccff0850e3047ed46bfcd2e92c29a2d074d57e252"
+checksum = "7acad6f34eb9e8a259d3283d1e8c1d34d7415943d4895f65cc73813c7396fc85"
 
 [[package]]
 name = "static_assertions"

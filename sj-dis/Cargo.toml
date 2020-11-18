@@ -1,9 +1,12 @@
 [package]
-name = "sjc"
+name = "sj-dis"
 version = "0.1.0"
 authors = ["Sam Westerman <sam@sampersand.me>"]
 edition = "2018"
-description = "Sojourn's Compiler"
 
 [dependencies]
 sjbc = { path = "../sjbc", version = "*" }
+read-from = "0.5"
+tracing-subscriber="0.2"
+tracing-tree="0.1"
+tracing = "0.1"
