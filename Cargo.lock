@@ -310,7 +310,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "sjbc"
+name = "sjc"
+version = "0.1.0"
+dependencies = [
+ "sjef",
+]
+
+[[package]]
+name = "sjdb"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "read-from",
+ "sjef",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-tree",
+]
+
+[[package]]
+name = "sjef"
 version = "0.2.0"
 dependencies = [
  "bitflags",
@@ -320,29 +339,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "sjc"
-version = "0.1.0"
-dependencies = [
- "sjbc",
-]
-
-[[package]]
-name = "sjdis"
-version = "0.1.0"
-dependencies = [
- "clap",
- "read-from",
- "sjbc",
- "tracing",
- "tracing-subscriber",
- "tracing-tree",
-]
-
-[[package]]
 name = "sjvm"
 version = "0.1.0"
 dependencies = [
- "sjbc",
+ "read-from",
+ "sjef",
+ "static_assertions",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-tree",
 ]
 
 [[package]]

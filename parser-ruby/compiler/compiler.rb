@@ -242,7 +242,7 @@ class Compiler
 	def not_(dst) emit Bytecode::NOT.to_i, dst.byte end
 	def inv(dst) emit Bytecode::INV.to_i, dst.byte end
 
-	def cmp(reg) emit Bytecode::CMP.to_i, reg.byte end
+	def cmp(lhs, rhs) emit Bytecode::CMP.to_i, lhs.byte, rhs.byte end
 	def jeq(lbl) emit NearOrFarJump.new(Bytecode::JEQ.to_i, nil, lbl) end
 	def jne(lbl) emit NearOrFarJump.new(Bytecode::JNE.to_i, nil, lbl) end
 	def jlt(lbl) emit NearOrFarJump.new(Bytecode::JLT.to_i, nil, lbl) end
@@ -340,7 +340,9 @@ class Compiler
 		end_if_lbl = new_label
 
 		with_scope do
-			cmp cond.emit(self)
+			tmp = new_reg
+			mov tmp, 0
+			cmp cond.emit(self), tmp
 			jeq if_false_lbl
 
 			mov rreg, if_true.emit(self)
@@ -356,12 +358,14 @@ class Compiler
 	def emit_while(cond, body)
 		start_lbl = new_label
 		end_lbl = new_label
+		tmp = new_reg
+		mov tmp, 0
 
 		with_scope do
 			mov rreg, emit_null
 
 			start_lbl.emit
-			cmp cond.emit(self)
+			cmp cond.emit(self), tmp
 			jeq end_lbl
 			mov rreg, body.emit(self)
 			jmp start_lbl

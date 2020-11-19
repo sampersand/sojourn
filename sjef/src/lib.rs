@@ -8,7 +8,7 @@ extern crate static_assertions as sa;
 mod text;
 mod data;
 mod file;
-mod instruction;
+pub mod instruction;
 
 pub use text::Text;
 pub use data::Data;

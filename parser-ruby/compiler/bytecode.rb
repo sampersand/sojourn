@@ -79,7 +79,7 @@ class Bytecode
 	declare_bytecode 26, :INV, :reg
 
 	# Jump bytecodes
-	declare_bytecode 27, :CMP, :reg
+	declare_bytecode 27, :CMP, :reg, :reg
 	declare_bytecode 28, :JEQ, :i16, jump: true
 	declare_bytecode 29, :JNE, :i16, jump: true
 	declare_bytecode 30, :JLT, :i16, jump: true

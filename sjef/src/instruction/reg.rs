@@ -18,6 +18,13 @@ impl Reg {
 	}
 }
 
+impl From<Reg> for u8 {
+	#[inline]
+	fn from(reg: Reg) -> Self {
+		reg.0
+	}
+}
+
 impl ReadFrom for Reg {
 	type Error = io::Error;
 

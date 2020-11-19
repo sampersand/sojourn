@@ -6,7 +6,7 @@ edition = "2018"
 description = "Sojourn's Debugger."
 
 [dependencies]
-sjbc = { path = "../sjbc", version = "*" }
+sjef = { path = "../sjef", version = "*" }
 read-from = "0.5"
 tracing-subscriber="0.2"
 tracing-tree="0.1"

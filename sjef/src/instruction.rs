@@ -29,7 +29,7 @@ pub enum Instruction {
 	///
 	/// ```
 	/// stack[sp++] <- word
-	PushI(Word),
+	PushW(Word),
 
 	/// Push the byte onto the stack, sign-extending it if it's negative.
 	///
@@ -208,13 +208,13 @@ pub enum Instruction {
 
 	/*** Control Flow ***/
 
-	/// Sets `cmpflags` to `ZERO`, `POS`, or `NEG`, depending on if the register's contents are zero, positive, or
-	/// negative.
+	/// Sets `cmpflags` to `ZERO`, `POS`, or `NEG`, depending on if the first register's contents are equal to, 
+	/// than, or greater than the second register's.
 	///
 	/// ```
-	/// cmpflags <- <cmp reg>
+	/// cmpflags <- <cmp reg and reg2>
 	/// ```
-	Cmp(Reg),
+	Cmp(Reg, Reg),
 
 	/// If `cmpflags` are `ZERO`, then change the instruction pointer by the given offset.
 	///
@@ -349,11 +349,11 @@ macro_rules! declare_opcodes {
 						Ok(this)
 					},
 					Ok(LittleEndian(val)) => {
-						debug!(?val, "unknown opcode");
+						warn!(?val, "unknown opcode");
 						Err(ReadError::UnknownOpCode(val))
 					} 
 					Err(err) => {
-						debug!(?err, "unable to parse opcode");
+						warn!(?err, "unable to parse opcode");
 						Err(ReadError::Io(err))
 					} 
 				}
@@ -369,7 +369,7 @@ macro_rules! declare_opcodes {
 }
 
 declare_opcodes!{ 
-	Nop Push PushI PushBSx Pop Load Store Mov MovW MovBSx Dbg Int
+	Nop Push PushW PushBSx Pop Load Store Mov MovW MovBSx Dbg Int
 	Inc Dec Add Sub Mul Div Mod And Or Xor Lsh Rsh Neg Inv Not
 	Cmp Jeq Jne Jlt Jle Jgt Jge Jmp Call CallF Ret Lfs
 }
@@ -404,8 +404,7 @@ impl Instruction {
 					| Self::Dec(_)
 					| Self::Neg(_)
 					| Self::Inv(_)
-					| Self::Not(_)
-					| Self::Cmp(_) => 1,
+					| Self::Not(_)  => 1,
 				Self::Load(_, _)
 					| Self::Store(_, _)
 					| Self::Mov(_, _)
@@ -418,7 +417,8 @@ impl Instruction {
 					| Self::Or(_, _)
 					| Self::Xor(_, _)
 					| Self::Lsh(_, _)
-					| Self::Rsh(_, _) => size_of::<Reg>() * 2,
+					| Self::Rsh(_, _)
+					| Self::Cmp(_, _) => size_of::<Reg>() * 2,
 				Self::PushBSx(_) => size_of::<i8>(),
 				Self::Jeq(_)
 					| Self::Jne(_)
@@ -428,7 +428,7 @@ impl Instruction {
 					| Self::Jge(_)
 					| Self::Jmp(_)
 					| Self::Call(_) => size_of::<i16>(),
-				Self::PushI(_)
+				Self::PushW(_)
 					| Self::CallF(_) => size_of::<Word>(),
 
 				Self::MovW(_, _) => size_of::<Reg>() + size_of::<Word>(),
@@ -492,7 +492,7 @@ impl ReadFrom for Instruction {
 			match opcode {
 				OpCode::Nop => Self::Nop(),
 				OpCode::Push => Self::Push(Reg::read_from(&mut inp)?),
-				OpCode::PushI => Self::PushI(LittleEndian::read_from(&mut inp)?.0),
+				OpCode::PushW => Self::PushW(LittleEndian::read_from(&mut inp)?.0),
 				OpCode::PushBSx => Self::PushBSx(i8::read_from(&mut inp)?),
 				OpCode::Pop => Self::Pop(Reg::read_from(&mut inp)?),
 				OpCode::Load => Self::Load(Reg::read_from(&mut inp)?, Reg::read_from(&mut inp)?),
@@ -517,7 +517,7 @@ impl ReadFrom for Instruction {
 				OpCode::Neg => Self::Neg(Reg::read_from(&mut inp)?),
 				OpCode::Inv => Self::Inv(Reg::read_from(&mut inp)?),
 				OpCode::Not => Self::Not(Reg::read_from(&mut inp)?),
-				OpCode::Cmp => Self::Cmp(Reg::read_from(&mut inp)?),
+				OpCode::Cmp => Self::Cmp(Reg::read_from(&mut inp)?, Reg::read_from(&mut inp)?),
 				OpCode::Jeq => Self::Jeq(LittleEndian::read_from(&mut inp)?.0),
 				OpCode::Jne => Self::Jne(LittleEndian::read_from(&mut inp)?.0),
 				OpCode::Jlt => Self::Jlt(LittleEndian::read_from(&mut inp)?.0),
@@ -533,7 +533,7 @@ impl ReadFrom for Instruction {
 				other => unreachable!("internal error: opcode {:?} somehow encountered", other)
 			};
 
-		trace!(self = ?this, "read an instruction in");
+		trace!(self=?this, "read instruction");
 		Ok(this)
 	}
 }
@@ -553,8 +553,7 @@ impl WriteTo for Instruction {
 					| Self::Dec(reg)
 					| Self::Neg(reg)
 					| Self::Inv(reg)
-					| Self::Not(reg)
-					| Self::Cmp(reg) => reg.write_to(&mut out)?,
+					| Self::Not(reg) => reg.write_to(&mut out)?,
 				Self::Load(reg1, reg2)
 					| Self::Store(reg1, reg2)
 					| Self::Mov(reg1, reg2)
@@ -567,7 +566,8 @@ impl WriteTo for Instruction {
 					| Self::Or(reg1, reg2)
 					| Self::Xor(reg1, reg2)
 					| Self::Lsh(reg1, reg2)
-					| Self::Rsh(reg1, reg2) => reg1.write_to(&mut out)? + reg2.write_to(&mut out)?,
+					| Self::Rsh(reg1, reg2)
+					| Self::Cmp(reg1, reg2) => reg1.write_to(&mut out)? + reg2.write_to(&mut out)?,
 
 				Self::PushBSx(sbyte) => sbyte.write_to(&mut out)?,
 				Self::Jeq(offset)
@@ -578,7 +578,7 @@ impl WriteTo for Instruction {
 					| Self::Jge(offset)
 					| Self::Jmp(offset)
 					| Self::Call(offset) => LittleEndian(offset).write_to(&mut out)?,
-				Self::PushI(word)
+				Self::PushW(word)
 					| Self::CallF(word) => LittleEndian(word).write_to(&mut out)?,
 
 				Self::MovW(reg, word) => reg.write_to(&mut out)? + LittleEndian(word).write_to(&mut out)?,
@@ -598,7 +598,7 @@ impl Display for Instruction {
 		match self {
 			Self::Nop()              => write!(buf, "nop"),
 			Self::Push(reg)          => write!(buf, "push {}", reg),
-			Self::PushI(word)        => write!(buf, "pushi $0x{:08x}", word),
+			Self::PushW(word)        => write!(buf, "pushi $0x{:08x}", word),
 			Self::PushBSx(sbyte)     => write!(buf, "pushbsx $0x{:02x}", sbyte),
 			Self::Pop(reg)           => write!(buf, "pop {}", reg),
 			Self::Load(reg1, reg2)   => write!(buf, "load {}, {}", reg1, reg2),
@@ -623,7 +623,7 @@ impl Display for Instruction {
 			Self::Neg(reg)           => write!(buf, "neg {}", reg),
 			Self::Inv(reg)           => write!(buf, "inv {}", reg),
 			Self::Not(reg)           => write!(buf, "not {}", reg),
-			Self::Cmp(reg)           => write!(buf, "cmp {}", reg),
+			Self::Cmp(reg1, reg2)    => write!(buf, "cmp {}, {}", reg1, reg2),
 			Self::Jeq(offset)        => write!(buf, "jeq ${}", offset),
 			Self::Jne(offset)        => write!(buf, "jne ${}", offset),
 			Self::Jlt(offset)        => write!(buf, "jlt ${}", offset),
@@ -674,8 +674,7 @@ impl LowerHex for Instruction {
 				| Self::Dec(reg)
 				| Self::Neg(reg)
 				| Self::Inv(reg)
-				| Self::Not(reg)
-				| Self::Cmp(reg) => write!(buf, " {:02x}", reg)?,
+				| Self::Not(reg) => write!(buf, " {:02x}", reg)?,
 			Self::Load(reg1, reg2)
 				| Self::Store(reg1, reg2)
 				| Self::Mov(reg1, reg2)
@@ -688,7 +687,8 @@ impl LowerHex for Instruction {
 				| Self::Or(reg1, reg2)
 				| Self::Xor(reg1, reg2)
 				| Self::Lsh(reg1, reg2)
-				| Self::Rsh(reg1, reg2) => write!(buf, " {:02x} {:02x}", reg1, reg2)?,
+				| Self::Rsh(reg1, reg2)
+				| Self::Cmp(reg1, reg2) => write!(buf, " {:02x} {:02x}", reg1, reg2)?,
 
 			Self::PushBSx(sbyte) => write!(buf, " {:02x}", sbyte)?,
 			Self::Jeq(offset)
@@ -699,7 +699,7 @@ impl LowerHex for Instruction {
 				| Self::Jge(offset)
 				| Self::Jmp(offset)
 				| Self::Call(offset) => write!(buf, " {:02x} {:02x}", (*offset as u16) >> 8, (*offset as u16) & 0xff)?,
-			Self::PushI(word)
+			Self::PushW(word)
 				| Self::CallF(word) => write_word!(buf, " {:02x}", *word)?,
 
 			Self::MovW(reg, word) => { write!(buf, " {:02x}", reg)?; write_word!(buf, " {:02x}", *word)? },
@@ -730,8 +730,7 @@ impl UpperHex for Instruction {
 				| Self::Dec(reg)
 				| Self::Neg(reg)
 				| Self::Inv(reg)
-				| Self::Not(reg)
-				| Self::Cmp(reg) => write!(buf, " {:02X}", reg)?,
+				| Self::Not(reg) => write!(buf, " {:02X}", reg)?,
 			Self::Load(reg1, reg2)
 				| Self::Store(reg1, reg2)
 				| Self::Mov(reg1, reg2)
@@ -744,7 +743,8 @@ impl UpperHex for Instruction {
 				| Self::Or(reg1, reg2)
 				| Self::Xor(reg1, reg2)
 				| Self::Lsh(reg1, reg2)
-				| Self::Rsh(reg1, reg2) => write!(buf, " {:02X} {:02X}", reg1, reg2)?,
+				| Self::Rsh(reg1, reg2)
+				| Self::Cmp(reg1, reg2) => write!(buf, " {:02X} {:02X}", reg1, reg2)?,
 
 			Self::PushBSx(sbyte) => write!(buf, " {:02X}", sbyte)?,
 			Self::Jeq(offset)
@@ -755,7 +755,7 @@ impl UpperHex for Instruction {
 				| Self::Jge(offset)
 				| Self::Jmp(offset)
 				| Self::Call(offset) => write!(buf, " {:02X} {:02X}", (*offset as u16) >> 8, (*offset as u16) & 0xff)?,
-			Self::PushI(word)
+			Self::PushW(word)
 				| Self::CallF(word) => write_word!(buf, " {:02X}", *word)?,
 
 			Self::MovW(reg, word) => { write!(buf, " {:02X}", reg)?; write_word!(buf, " {:02X}", *word)? },
@@ -786,8 +786,7 @@ impl Binary for Instruction {
 				| Self::Dec(reg)
 				| Self::Neg(reg)
 				| Self::Inv(reg)
-				| Self::Not(reg)
-				| Self::Cmp(reg) => write!(buf, " {:08b}", reg)?,
+				| Self::Not(reg) => write!(buf, " {:08b}", reg)?,
 			Self::Load(reg1, reg2)
 				| Self::Store(reg1, reg2)
 				| Self::Mov(reg1, reg2)
@@ -800,7 +799,8 @@ impl Binary for Instruction {
 				| Self::Or(reg1, reg2)
 				| Self::Xor(reg1, reg2)
 				| Self::Lsh(reg1, reg2)
-				| Self::Rsh(reg1, reg2) => write!(buf, " {:08b} {:08b}", reg1, reg2)?,
+				| Self::Rsh(reg1, reg2)
+				| Self::Cmp(reg1, reg2) => write!(buf, " {:08b} {:08b}", reg1, reg2)?,
 
 			Self::PushBSx(sbyte) => write!(buf, " {:08b}", sbyte)?,
 			Self::Jeq(offset)
@@ -811,7 +811,7 @@ impl Binary for Instruction {
 				| Self::Jge(offset)
 				| Self::Jmp(offset)
 				| Self::Call(offset) => write!(buf, " {:08b} {:08b}", (*offset as u16) >> 8, (*offset as u16) & 0xff)?,
-			Self::PushI(word)
+			Self::PushW(word)
 				| Self::CallF(word) => write_word!(buf, " {:08b}", *word)?,
 
 			Self::MovW(reg, word) => { write!(buf, " {:08b}", reg)?; write_word!(buf, " {:08b}", *word)? },

@@ -1,9 +1,9 @@
 [package]
-name = "sjbc"
+name = "sjef"
 version = "0.2.0"
 authors = ["Sam Westerman <sam@sampersand.me>"]
 edition = "2018"
-description = "Sojourn's Bytecode format"
+description = "Sojourn's Executable Format"
 
 [dependencies]
 static_assertions = "1.1"

@@ -5,10 +5,11 @@ use std::fmt::{self, Display, Formatter};
 
 /// A Sojourn file.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct File {
-	version: [u8; 8],
-	text: Text,
-	data: Data
+	pub version: [u8; 8],
+	pub text: Text,
+	pub data: Data
 }
 
 /// Problems that can occur whilst reading a file.

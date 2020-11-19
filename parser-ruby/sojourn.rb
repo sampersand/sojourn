@@ -6,8 +6,8 @@ compiler = Compiler.new do
 	nop
 	# emit_function 'print', 'wat', block { trap 1, variable('wat'); rreg }
 	# new_data :string, ("foobar"*4)
-	new_data :string, "hello, "
-	movw 1, -1
+	# new_data :string, "hello, "
+	# movw 1, -1
 	# new_data :string, "world"
 	# new_data :string, "1"
 	# new_data :string, "2"
@@ -24,7 +24,7 @@ AST.new(<<'EOS'
 fn fib(n: Int): Int {
 	a: Int = 0;
 	b: Int = 1;
-	while n {
+	while n - 1 {
 		tmp: Int = b;
 		b: Int = b + a;
 		a: Int = tmp;

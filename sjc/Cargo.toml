@@ -6,4 +6,4 @@ edition = "2018"
 description = "Sojourn's Compiler"
 
 [dependencies]
-sjbc = { path = "../sjbc", version = "*" }
+sjef = { path = "../sjef", version = "*" }

@@ -1,5 +1,5 @@
 [workspace]
-members = ['sjvm', 'sjc', 'sjbc', 'sjdb']
+members = ['sjvm', 'sjc', 'sjef', 'sjdb']
 
 [profile.release]
 lto = true

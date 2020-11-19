@@ -3,7 +3,7 @@
 #[macro_use]
 extern crate tracing;
 
-use sjbc::File;
+use sjef::File;
 use read_from::ReadFrom;
 use clap::{Arg, App, ArgMatches, SubCommand};
 use std::io::{self, Write};
