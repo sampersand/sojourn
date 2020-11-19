@@ -60,7 +60,7 @@ class Bytecode
 	declare_bytecode  8, :MOVW,   :reg, :i64
 	declare_bytecode  9, :MOVBSX, :reg, :i8
 	declare_bytecode 10, :DEBUG
-	declare_bytecode 11, :TRAP,   :i8,  :u81
+	declare_bytecode 11, :TRAP,   :i8,  :u8
 	# Math bytecodes
 	declare_bytecode 12, :INC, :reg
 	declare_bytecode 13, :DEC, :reg

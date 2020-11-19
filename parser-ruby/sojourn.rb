@@ -3,8 +3,8 @@ require_relative 'compiler/compiler'
 
 compiler = Compiler.new do
 	emit_function 'debug', 'wat', block { push variable('wat'); debug; pop rreg; rreg }
+	emit_function 'print', 'wat', block { trap 1, variable('wat'); rreg }
 	nop
-	# emit_function 'print', 'wat', block { trap 1, variable('wat'); rreg }
 	# new_data :string, ("foobar"*4)
 	# new_data :string, "hello, "
 	# movw 1, -1
@@ -21,6 +21,10 @@ compiler = Compiler.new do
 end
 
 AST.new(<<'EOS'
+a: Str = "foo"
+print(a)
+EOS
+=begin
 fn fib(n: Int): Int {
 	a: Int = 0;
 	b: Int = 1;

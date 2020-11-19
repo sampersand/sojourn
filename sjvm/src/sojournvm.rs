@@ -110,8 +110,12 @@ impl SojournVm {
 	}
 
 	fn op_int(&mut self, int: Interrupt) {
-		let _ = int;
-		todo!("interrupt.");
+		match int {
+			Interrupt::Exit(code) => std::process::exit(code),
+			_ => {}
+		};
+
+		debug!("Performed 'int'. int={:?}", int);
 	}
 
 	fn op_inc(&mut self, reg: Reg) {

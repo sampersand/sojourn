@@ -4,6 +4,7 @@ use std::fmt::{self, Display, LowerHex, UpperHex, Binary, Formatter};
 
 /// The type of interrupt to perform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Interrupt {
 	/// Exit with the given code.
 	Exit(i32)
