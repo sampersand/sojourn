@@ -1,6 +1,6 @@
 use sjef::{File, Data, Instruction};
 use sjef::instruction::{Reg, Interrupt};
-use crate::{Word, ByteCode, Stack, Registers};
+use crate::{Word, ByteCode, Stack, Registers, Heap, Pointer};
 use read_from::{ReadFrom, WriteTo};
 
 #[derive(Debug)]
@@ -10,6 +10,7 @@ pub struct SojournVm {
 	pub stack: Stack,
 	pub data: Data,
 	pub registers: Registers,
+	pub heap: Heap,
 	flags: u8 // TODO: Flags
 }
 const FLAG_EQL: u8 = 0b001;
@@ -26,6 +27,7 @@ impl SojournVm {
 			registers: Registers::new(),
 			data: file.data,
 			bytecode: ByteCode::new(bytecode),
+			heap: Heap::new(),
 			flags: 0
 		}
 	}
@@ -75,18 +77,54 @@ impl SojournVm {
 	}
 
 	fn op_load(&mut self, dst: Reg, src: Reg) {
-		let _ = (dst, src);
-		todo!();
+		let ptr = Pointer::from_word(self.registers[dst].load());
+
+		// SAFETY: Like every other opcode, we have no way to guarantee this is safe. The compiler must do that.
+		self.registers[src].store(unsafe { self.heap.get_word(ptr) });
+
+		debug!("Performed 'load'. {}={:p} -> {}={:x}", dst, self.registers[dst], src, self.registers[src]);
 	}
 
 	fn op_store(&mut self, dst: Reg, src: Reg) {
-		let _ = (dst, src);
-		todo!();
+		let ptr = Pointer::from_word(self.registers[dst].load());
+		let value = self.registers[src].load();
+
+		// SAFETY: Like every other opcode, we have no way to guarantee this is safe. The compiler must do that.
+		unsafe {
+			self.heap.set_word(ptr, value);
+		}
+
+		debug!("Performed 'store'. {}={:p} {}={:x}", dst, self.registers[dst], src, self.registers[src]);
 	}
 
+	fn op_storew(&mut self, dst: Reg, word: Word) {
+		let ptr = Pointer::from_word(self.registers[dst].load());
+
+		// SAFETY: Like every other opcode, we have no way to guarantee this is safe. The compiler must do that.
+		unsafe {
+			self.heap.set_word(ptr, word);
+		}
+
+		debug!("Performed 'store'. {}={:p} -> {1:p}={:016x}", dst, self.registers[dst], word);
+	}
+
+	fn op_storeb(&mut self, dst: Reg, byte: u8) {
+		let ptr = Pointer::from_word(self.registers[dst].load());
+
+		// SAFETY: Like every other opcode, we have no way to guarantee this is safe. The compiler must do that.
+		unsafe {
+			self.heap.set_byte(ptr, byte);
+		}
+
+		debug!("Performed 'store'. {}={:p} -> {1:p}={:02x}", dst, self.registers[dst], byte);
+	}
+
+
 	fn op_mov(&mut self, dst: Reg, src: Reg) {
-		let value = self.registers[src].load();
-		self.registers[dst].store(value);
+		if dst != src {
+			let value = self.registers[src].load();
+			self.registers[dst].store(value);
+		}
 
 		debug!("Performed 'mov'. {}={:x} -> {}={:x}", src, self.registers[src], dst, self.registers[dst]);
 	}
@@ -104,18 +142,63 @@ impl SojournVm {
 	}
 
 	fn op_dbg(&mut self) {
-		println!("{:#?}", self);
+		// println!("{:#?}", self);
+
+		unsafe {
+			let ptr = Pointer::from_word(self.registers[Reg::RETURN_REG].load());
+
+			let len = self.heap.get_word(ptr) as usize;
+			let ptr = ptr.offset(std::mem::size_of::<Word>() as isize);
+			let mut string = String::with_capacity(len as usize);
+			for i in 0..len {
+				string.push(self.heap.get_byte(ptr.offset(i as isize)) as char);
+			}
+
+			print!("{}", string);
+		}
 
 		debug!("Performed 'dbg'.");
 	}
 
 	fn op_int(&mut self, int: Interrupt) {
-		match int {
-			Interrupt::Exit(code) => std::process::exit(code),
-			_ => {}
-		};
 
-		debug!("Performed 'int'. int={:?}", int);
+		match int {
+			Interrupt::Exit(code) => {
+				// note we write the debug message _before_ exit here, as we need it to be printed out before we exit.
+				debug!("Performed 'int' ('exit'). code={}", code);
+				std::process::exit(code);
+			},
+			Interrupt::Malloc(reg, size) => {
+				let ptr = self.heap.malloc(size as usize);
+
+				self.registers[reg].store(ptr.into_word());
+
+				debug!("Performed 'int' ('malloc'). size={} -> {}={:p}", size, reg, self.registers[reg]);
+			},
+			Interrupt::Free(reg) => {
+				let ptr = Pointer::from_word(self.registers[reg].load());
+
+				// SAFETY: Lol, we have to hope that whoever called `Free` knows that
+				// they're doing. We have no safety guarantees in release mode. 
+				unsafe {
+					self.heap.free(ptr);
+				}
+
+				debug!("Performed 'int' ('free'). {}={:p}", reg, self.registers[reg]);
+			},
+			Interrupt::Realloc(reg, size) => {
+				let old_reg = self.registers[reg];
+				let ptr = Pointer::from_word(old_reg.load());
+
+				// SAFETY: Lol, we have to hope that whoever called `Realloc` knows that
+				// they're doing. We have no safety guarantees in release mode. 
+				self.registers[reg].store(unsafe { self.heap.realloc(ptr, size as usize) }.into_word());
+
+				debug!("Performed 'int' ('realloc'). {}={:p}, new_size={} -> {0}={:p}", reg, old_reg, size,
+					self.registers[reg]);
+			},
+			other => unimplemented!("interrupt: {:?}", other)
+		};
 	}
 
 	fn op_inc(&mut self, reg: Reg) {
@@ -357,8 +440,7 @@ impl SojournVm {
 impl SojournVm {
 	#[instrument(level = "debug", skip(self, instr), fields(start_ip=%format!("{:08x}", self.bytecode.ip()), %instr))]
 	pub fn execute(&mut self, instr: Instruction) {
-		// trace!(?instr, ip=%format!("{:08x}", self.bytecode.ip()), "starting execution");
-		// debug!(?instr, ip=%format!("{:08x}", self.bytecode.ip()), "starting execution");
+		trace!(?instr, ip=%format!("{:08x}", self.bytecode.ip()), "starting execution");
 
 		match instr {
 			Instruction::Nop() => self.op_nop(),
@@ -368,6 +450,8 @@ impl SojournVm {
 			Instruction::Pop(reg) => self.op_pop(reg),
 			Instruction::Load(reg1, reg2) => self.op_load(reg1, reg2),
 			Instruction::Store(reg1, reg2) => self.op_store(reg1, reg2),
+			Instruction::StoreW(reg, word) => self.op_storew(reg, word),
+			Instruction::StoreB(reg, byte) => self.op_storeb(reg, byte),
 			Instruction::Mov(dst, src) => self.op_mov(dst, src),
 			Instruction::MovW(reg, word) => self.op_movw(reg, word),
 			Instruction::MovBSx(reg, sbyte) => self.op_movbsx(reg, sbyte),
@@ -406,7 +490,7 @@ impl SojournVm {
 			Instruction::Ext(_) => todo!(),
 		};
 
-		// debug!(?instr, ip=%format!("{:08x}", self.bytecode.ip()), "finished execution");
+		trace!(?instr, ip=%format!("{:08x}", self.bytecode.ip()), "finished execution");
 	}
 }
 

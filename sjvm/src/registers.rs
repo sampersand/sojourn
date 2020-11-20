@@ -26,7 +26,6 @@ impl Registers {
 	}
 }
 
-
 impl Index<Reg> for Registers {
 	type Output = Register;
 

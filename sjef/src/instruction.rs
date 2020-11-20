@@ -20,62 +20,76 @@ pub enum Instruction {
 
 	/// Pushes the register's contents onto the stack.
 	///
-	/// ```
+	/// ```text
 	/// stack[sp++] <- reg
 	/// ```
 	Push(Reg),
 
 	/// Push the word onto the stack.
 	///
-	/// ```
+	/// ```text
 	/// stack[sp++] <- word
 	PushW(Word),
 
 	/// Push the byte onto the stack, sign-extending it if it's negative.
 	///
-	/// ```
+	/// ```text
 	/// stack[s++] <- i8 as Word (sign-extended)
 	/// ```
 	PushBSx(i8),
 
 	/// Pops the last value on the stack into the register.
 	///
-	/// ```
+	/// ```text
 	/// reg <- stack[--sp]
 	/// ```
 	Pop(Reg),
 
 	/// Loads the contents from memory pointed to by the second register into the first.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- memory[reg2]
 	/// ```
 	Load(Reg, Reg),
 
 	/// Stores the second register's value into the memory location pointed to by the first register.
 	///
-	/// ```
+	/// ```text
 	/// memory[reg1] <- reg2
 	/// ```
 	Store(Reg, Reg),
 
+	/// Stores the word into the memory location pointed to by the first register.
+	///
+	/// ```text
+	/// memory[reg1] <- word
+	/// ```
+	StoreW(Reg, Word),
+
+	/// Stores the byte into the memory location pointed to by the first register.
+	///
+	/// ```text
+	/// memory[reg1] <- byte
+	/// ```
+	StoreB(Reg, u8),
+
 	/// Copies the second register's contents into the first.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg2
 	/// ```
 	Mov(Reg, Reg),
 
 	/// Moves the word into the register.
 	///
-	/// ```
+	/// ```text
 	/// reg <- word
 	/// ```
 	MovW(Reg, Word),
 
 	/// Moves the signed byte into the register, sign-extending if the byte is negative.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- i8 as Word (sign-extended)
 	/// ```
 	MovBSx(Reg, i8),
@@ -85,7 +99,7 @@ pub enum Instruction {
 
 	/// Interrupt the VM, asking it to do something special based on the type given.
 	///
-	/// ```
+	/// ```text
 	/// <see Interrupt for more details> 
 	/// ```
 	Int(Interrupt),
@@ -94,42 +108,42 @@ pub enum Instruction {
 
 	/// Increments the register's contents by one.
 	///
-	/// ```
+	/// ```text
 	/// reg <- reg + 1
 	/// ```
 	Inc(Reg),
 
 	/// Decrements the register's contents by one.
 	///
-	/// ```
+	/// ```text
 	/// reg <- reg - 1
 	/// ```
 	Dec(Reg),
 
 	/// Adds the second register's contents to the first's.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 + reg2
 	/// ```
 	Add(Reg, Reg),
 
 	/// Subtracts the second register's contents from the first's.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 - reg2
 	/// ```
 	Sub(Reg, Reg),
 
 	/// Multiplies the second register's contents by the first's.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 * reg2
 	/// ```
 	Mul(Reg, Reg),
 
 	/// Divides the second register's contents from the first's.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 / reg2
 	/// ```
 	///
@@ -140,7 +154,7 @@ pub enum Instruction {
 
 	/// Sets the first register's contents equal to it mod the second
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 % reg2
 	/// ```
 	///
@@ -151,28 +165,28 @@ pub enum Instruction {
 
 	/// Bitwise ANDs the second register's contents and the first's, storing the result in the first register.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 & reg2
 	/// ```
 	And(Reg, Reg),
 
 	/// Bitwise ORs the second register's contents and the first's, storing the result in the first register.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 | reg2
 	/// ```
 	Or(Reg, Reg),
 
 	/// Bitwise XORs the second register's contents and the first's, storing the result in the first register.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 ^ reg2
 	/// ```
 	Xor(Reg, Reg),
 
 	/// Shifts the first register left by the second register's contents.
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 << reg2
 	/// ```
 	Lsh(Reg, Reg),
@@ -180,28 +194,28 @@ pub enum Instruction {
 	/// Shifts the first register right by the second register's contents.
 	/// # TODO: does this sign-extend?
 	///
-	/// ```
+	/// ```text
 	/// reg1 <- reg1 >> reg2
 	/// ```
 	Rsh(Reg, Reg),
 
 	/// Negates the register.
 	///
-	/// ```
+	/// ```text
 	/// reg <- -reg
 	/// ```
 	Neg(Reg),
 
 	/// Bitwise inverts the register.
 	///
-	/// ```
+	/// ```text
 	/// reg <- ~reg (= -reg - 1)
 	/// ```
 	Inv(Reg),
 
 	/// Logical negation of the register: Zero becomes one, and everything else becomes zero.
 	///
-	/// ```
+	/// ```text
 	/// reg <- <reg == 0 ? 1 : 0>
 	/// ```
 	Not(Reg),
@@ -211,56 +225,56 @@ pub enum Instruction {
 	/// Sets `cmpflags` to `ZERO`, `POS`, or `NEG`, depending on if the first register's contents are equal to, 
 	/// than, or greater than the second register's.
 	///
-	/// ```
+	/// ```text
 	/// cmpflags <- <cmp reg and reg2>
 	/// ```
 	Cmp(Reg, Reg),
 
 	/// If `cmpflags` are `ZERO`, then change the instruction pointer by the given offset.
 	///
-	/// ```
+	/// ```text
 	/// ip <- ip + <cmpflags == ZERO ? offset : 0>
 	/// ```
 	Jeq(i16),
 
 	/// If `cmpflags` aren't `ZERO`, then change the instruction pointer by the given offset.
 	///
-	/// ```
+	/// ```text
 	/// ip <- ip + <cmpflags != ZERO ? offset : 0>
 	/// ```
 	Jne(i16),
 
 	/// If `cmpflags` are `NEG`, then change the instruction pointer by the given offset.
 	///
-	/// ```
+	/// ```text
 	/// ip <- ip + <cmpflags == NEG ? offset : 0>
 	/// ```
 	Jlt(i16),
 
 	/// If `cmpflags` aren't `POS`, then change the instruction pointer by the given offset.
 	///
-	/// ```
+	/// ```text
 	/// ip <- ip + <cmpflags != POS ? offset : 0>
 	/// ```
 	Jle(i16),
 
 	/// If `cmpflags` are `POS`, then change the instruction pointer by the given offset.
 	///
-	/// ```
+	/// ```text
 	/// ip <- ip + <cmpflags == POS ? offset : 0>
 	/// ```
 	Jgt(i16),
 
 	/// If `cmpflags` aren't `NEG`, then change the instruction pointer by the given offset.
 	///
-	/// ```
+	/// ```text
 	/// ip <- ip + <cmpflags == NEG ? offset : 0>
 	/// ```
 	Jge(i16),
 
 	/// Change the instruction pointer by the given offset.
 	///
-	/// ```
+	/// ```text
 	/// ip <- ip + offset
 	/// ```
 	Jmp(i16),
@@ -272,7 +286,7 @@ pub enum Instruction {
 	///
 	/// For example, for `square(3, 4)`, you'd have `pushbsx 3; pushbsx 4; call <square's offset from here>'
 	///
-	/// ```
+	/// ```text
 	/// stack[sp++] <- ip : ip <- ip + offset
 	/// ```
 	Call(i16),
@@ -284,7 +298,7 @@ pub enum Instruction {
 	///
 	/// Note that the return value should be housed in [`Reg::RETURN_REG`].
 	///
-	/// ```
+	/// ```text
 	/// ip <- stack[--sp]
 	/// ```
 	Ret(),
@@ -293,7 +307,7 @@ pub enum Instruction {
 	///
 	/// This starts counting at the second from the top, as the first value is the instruction pointer.
 	///
-	/// ```
+	/// ```text
 	/// reg <- stack[sp - 2 - idx]
 	///
 	Lfs(Reg, u8),
@@ -369,7 +383,7 @@ macro_rules! declare_opcodes {
 }
 
 declare_opcodes!{ 
-	Nop Push PushW PushBSx Pop Load Store Mov MovW MovBSx Dbg Int
+	Nop Push PushW PushBSx Pop Load Store StoreW StoreB Mov MovW MovBSx Dbg Int
 	Inc Dec Add Sub Mul Div Mod And Or Xor Lsh Rsh Neg Inv Not
 	Cmp Jeq Jne Jlt Jle Jgt Jge Jmp Call CallF Ret Lfs
 }
@@ -431,9 +445,11 @@ impl Instruction {
 				Self::PushW(_)
 					| Self::CallF(_) => size_of::<Word>(),
 
-				Self::MovW(_, _) => size_of::<Reg>() + size_of::<Word>(),
+				Self::MovW(_, _)
+					| Self::StoreW(_, _) => size_of::<Reg>() + size_of::<Word>(),
 				Self::MovBSx(_, _) => size_of::<Reg>() + size_of::<i8>(),
-				Self::Lfs(_, _) => size_of::<Reg>() + size_of::<u8>(),
+				Self::Lfs(_, _)
+					| Self::StoreB(_, _) => size_of::<Reg>() + size_of::<u8>(),
 				Self::Int(it) => it.byte_len(),
 				Self::Ext(_) => panic!("'ext' is not currently supported"),
 			}
@@ -497,6 +513,8 @@ impl ReadFrom for Instruction {
 				OpCode::Pop => Self::Pop(Reg::read_from(&mut inp)?),
 				OpCode::Load => Self::Load(Reg::read_from(&mut inp)?, Reg::read_from(&mut inp)?),
 				OpCode::Store => Self::Store(Reg::read_from(&mut inp)?, Reg::read_from(&mut inp)?),
+				OpCode::StoreW => Self::StoreW(Reg::read_from(&mut inp)?, LittleEndian::read_from(&mut inp)?.0),
+				OpCode::StoreB => Self::StoreB(Reg::read_from(&mut inp)?, u8::read_from(&mut inp)?),
 				OpCode::Mov => Self::Mov(Reg::read_from(&mut inp)?, Reg::read_from(&mut inp)?),
 				OpCode::MovW => Self::MovW(Reg::read_from(&mut inp)?, LittleEndian::read_from(&mut inp)?.0),
 				OpCode::MovBSx => Self::MovBSx(Reg::read_from(&mut inp)?, LittleEndian::read_from(&mut inp)?.0),
@@ -530,7 +548,7 @@ impl ReadFrom for Instruction {
 				OpCode::Ret => Self::Ret(),
 				OpCode::Lfs => Self::Lfs(Reg::read_from(&mut inp)?, u8::read_from(&mut inp)?),
 				OpCode::Ext => panic!("ext is not implemented yet"),
-				other => unreachable!("internal error: opcode {:?} somehow encountered", other)
+				OpCode(41..=254) => unreachable!("internal error: opcode {:?} somehow encountered", opcode)
 			};
 
 		trace!(self=?this, "read instruction");
@@ -581,9 +599,11 @@ impl WriteTo for Instruction {
 				Self::PushW(word)
 					| Self::CallF(word) => LittleEndian(word).write_to(&mut out)?,
 
-				Self::MovW(reg, word) => reg.write_to(&mut out)? + LittleEndian(word).write_to(&mut out)?,
+				Self::MovW(reg, word)
+					| Self::StoreW(reg, word) => reg.write_to(&mut out)? + LittleEndian(word).write_to(&mut out)?,
 				Self::MovBSx(reg, sbyte) => reg.write_to(&mut out)? + sbyte.write_to(&mut out)?,
-				Self::Lfs(reg, byte) => reg.write_to(&mut out)? + byte.write_to(&mut out)?,
+				Self::Lfs(reg, byte) 
+					| Self::StoreB(reg, byte) => reg.write_to(&mut out)? + byte.write_to(&mut out)?,
 				Self::Int(it) => it.write_to(&mut out)?,
 				Self::Ext(_) => panic!("'ext' is not currently supported"),
 			})
@@ -603,6 +623,8 @@ impl Display for Instruction {
 			Self::Pop(reg)           => write!(buf, "pop {}", reg),
 			Self::Load(reg1, reg2)   => write!(buf, "load {}, {}", reg1, reg2),
 			Self::Store(reg1, reg2)  => write!(buf, "store {}, {}", reg1, reg2),
+			Self::StoreW(reg, word) => write!(buf, "storew {}, ${}", reg, word),
+			Self::StoreB(reg, byte) => write!(buf, "storeb {}, ${}", reg, byte),
 			Self::Mov(reg1, reg2)    => write!(buf, "mov {}, {}", reg1, reg2),
 			Self::MovW(reg, word)    => write!(buf, "movw {}, $0x{:08x}", reg, word),
 			Self::MovBSx(reg, sbyte) => write!(buf, "movbsx {}, $0x{:02x}", reg, sbyte),
@@ -702,9 +724,11 @@ impl LowerHex for Instruction {
 			Self::PushW(word)
 				| Self::CallF(word) => write_word!(buf, " {:02x}", *word)?,
 
-			Self::MovW(reg, word) => { write!(buf, " {:02x}", reg)?; write_word!(buf, " {:02x}", *word)? },
+			Self::MovW(reg, word)
+				| Self::StoreW(reg, word) => { write!(buf, " {:02x}", reg)?; write_word!(buf, " {:02x}", *word)? },
 			Self::MovBSx(reg, sbyte) => write!(buf, " {:02x} {:02x}", reg, sbyte)?,
-			Self::Lfs(reg, byte) => write!(buf, " {:02x} {:02x}", reg, byte)?,
+			Self::Lfs(reg, byte)
+				| Self::StoreB(reg, byte) => write!(buf, " {:02x} {:02x}", reg, byte)?,
 			Self::Int(int) => write!(buf, " {:x}", int)?,
 			Self::Ext(_) => panic!("'ext' is not currently supported"),
 		}
@@ -758,9 +782,11 @@ impl UpperHex for Instruction {
 			Self::PushW(word)
 				| Self::CallF(word) => write_word!(buf, " {:02X}", *word)?,
 
-			Self::MovW(reg, word) => { write!(buf, " {:02X}", reg)?; write_word!(buf, " {:02X}", *word)? },
+			Self::MovW(reg, word)
+				| Self::StoreW(reg, word) => { write!(buf, " {:02X}", reg)?; write_word!(buf, " {:02X}", *word)? },
 			Self::MovBSx(reg, sbyte) => write!(buf, " {:02X} {:02X}", reg, sbyte)?,
-			Self::Lfs(reg, byte) => write!(buf, " {:02X} {:02X}", reg, byte)?,
+			Self::Lfs(reg, byte)
+				| Self::StoreB(reg, byte) => write!(buf, " {:02X} {:02X}", reg, byte)?,
 			Self::Int(int) => write!(buf, " {:X}", int)?,
 			Self::Ext(_) => panic!("'ext' is not currently supported"),
 		}
@@ -814,9 +840,11 @@ impl Binary for Instruction {
 			Self::PushW(word)
 				| Self::CallF(word) => write_word!(buf, " {:08b}", *word)?,
 
-			Self::MovW(reg, word) => { write!(buf, " {:08b}", reg)?; write_word!(buf, " {:08b}", *word)? },
+			Self::MovW(reg, word)
+				| Self::StoreW(reg, word) => { write!(buf, " {:08b}", reg)?; write_word!(buf, " {:08b}", *word)? },
 			Self::MovBSx(reg, sbyte) => write!(buf, " {:08b} {:08b}", reg, sbyte)?,
-			Self::Lfs(reg, byte) => write!(buf, " {:08b} {:08b}", reg, byte)?,
+			Self::Lfs(reg, byte)
+				| Self::StoreB(reg, byte) => write!(buf, " {:08b} {:08b}", reg, byte)?,
 			Self::Int(int) => write!(buf, " {:b}", int)?,
 			Self::Ext(_) => panic!("'ext' is not currently supported"),
 		}

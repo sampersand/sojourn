@@ -3,7 +3,7 @@ use sjef::File;
 use read_from::ReadFrom;
 
 fn main() {
-	setup_tracing("warn");
+	setup_tracing("debug");
 	tracing::info!("Reading file in...");
 	let file = File::read_from(std::fs::File::open("parser-ruby/test.sjc").unwrap()).expect("bad file");
 	tracing::info!("Running vm...");

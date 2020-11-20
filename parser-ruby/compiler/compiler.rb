@@ -222,11 +222,13 @@ class Compiler
 	def pop(reg) emit Bytecode::POP.to_i, reg.byte end
 	def load(dst, reg) emit Bytecode::LOAD.to_i, dst.byte, reg.byte end
 	def store(dst, reg) emit Bytecode::STORE.to_i, dst.byte, reg.byte end
+	def storew(dst, word) emit Bytecode::STOREW.to_i, dst.byte, *word.word end
+	def storeb(dst, sbyte) emit Bytecode::STOREB.to_i, dst.byte, sbyte.byte end
 	def mov(dst, src) emit Bytecode::MOV.to_i, dst.byte, src.byte end
 	def movw(dst, int) emit Bytecode::MOVW.to_i, dst.byte, *int.word end
 	def movbsx(dst, byte) emit Bytecode::MOVBSX.to_i, dst.byte, byte.byte end
 	def debug; emit Bytecode::DEBUG.to_i end
-	def trap(what, *data) emit Bytecode::TRAP.to_i, what.byte, *data end
+	def int(what, *data) emit Bytecode::TRAP.to_i, what.byte, *data end
 
 	def add(dst, src) emit Bytecode::ADD.to_i, dst.byte, src.byte end
 	def sub(dst, src) emit Bytecode::SUB.to_i, dst.byte, src.byte end
@@ -393,10 +395,18 @@ class Compiler
 
 	def emit_call_function(fnlabel, *argregs)
 		with_scope do
+			saved = @scopes[@scopes.index(@function_scopes.last.first)..].map(&:registers).flatten.sort
+			saved.each do 
+				push _1
+			end
+
 			argregs.each { push _1.emit(self) }
 			call(fnlabel)
 			mov rreg, FN_RET_REG
 			argregs.each { with_scope { pop rreg } }
+			saved.reverse.each do 
+				pop _1
+			end
 		end
 	end
 end

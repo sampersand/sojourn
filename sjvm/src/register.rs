@@ -1,5 +1,5 @@
 #![allow(unused)]
-use crate::Word;
+use crate::{Word, MaybeUninit};
 use std::fmt::{self, Display, Binary, Octal, Pointer, UpperHex, LowerHex, Formatter, Alignment};
 use std::ops::{
 	AddAssign, SubAssign, MulAssign, DivAssign, RemAssign,
@@ -10,7 +10,14 @@ use std::ops::{
 ///
 /// Only the `Assign` ops are supported, as it doesn't make much sense to create a register out of thin air.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Register(Word);
+#[repr(transparent)]
+pub struct Register(Inner);
+
+#[cfg(feature = "regcheck")]
+type Inner = crate::MaybeUninit<Word>;
+
+#[cfg(not(feature = "regcheck"))]
+type Inner = Word;
 
 impl Default for Register {
 	#[inline]
@@ -20,41 +27,75 @@ impl Default for Register {
 }
 
 impl Register {
-	/// Creates a a default register, in a const context.
+	/// Creates a a default register, but simply in a const context.
+	///
+	/// # Example
+	/// ```rust
+	/// use sjvm::Register;
+	///
+	/// assert_eq!(Register::const_default(), Register::default());
+	/// ```
 	#[inline]
 	pub const fn const_default() -> Self {
-		Self::new(-1)
+		#[cfg(feature="regcheck")]
+		{ Self(MaybeUninit::const_uninit()) }
+
+		#[cfg(not(feature="regcheck"))]
+		{ Self() }
 	}
 
-	/// Creates a new register, initialized with the given [`Weord`].
+	/// Creates a new register, initialized with the given [`Word`].
+	/// ```rust
+	/// use sjvm::Register;
+	///
+	/// assert_eq!(Register::new(1234).load(), 1234);
+	/// ```
 	#[inline]
 	pub const fn new(word: Word) -> Self {
-		Self(word)
+		Self(MaybeUninit::new(word))
 	}
 
 	/// Gets the [`Word`] contained within this register.
-	#[inline]
+	///
+	/// It is undefined sojourn behaviour to load an uninitialized [`Register`] (ie a default one). In debug builds,
+	/// this function will panic. In release builds, uninitialized registers have undefined contents.
+	///
+	/// ```rust
+	/// use sjvm::Register;
+	///
+	/// assert_eq!(Register::new(1234).load(), 1234);
+	/// ```
+	#[inline(always)]
 	#[must_use = "getting the value does nothing on its own."]
-	pub const fn load(&self) -> Word {
-		self.0
+	pub fn load(&self) -> Word {
+		*self.0.get()
 	}
 
 	/// Sets the [`Word`] contained within this register.
-	pub fn store(&mut self, new: Word) {
-		self.swap(new);
-	}
-
-	/// Sets the [`Word`] contained within this register, returning the previous value.
-	#[must_use="If you don't need the returned value, use 'store'."]
-	pub fn swap(&mut self, mut new: Word) -> Word {
-		std::mem::swap(&mut self.0, &mut new);
-		new
-	}
-
-	/// Checks to see if the register is zero..
+	///
+	/// ```rust
+	/// use sjvm::Register;
+	///
+	/// let mut reg = Register::default();
+	/// reg.store(1234);
+	///
+	/// assert_eq!(reg.load(), 1234);
+	/// ```
 	#[inline]
-	pub const fn is_zero(&self) -> bool {
-		self.0 == 0
+	pub fn store(&mut self, word: Word) {
+		self.0.set(word);
+	}
+
+	/// Checks to see if the register is zero.
+	/// ```rust
+	/// use sjvm::Register;
+	///
+	/// assert!(Register::new(0).is_zero());
+	/// assert!(!Register::new(-1).is_zero());
+	/// ```
+	#[inline]
+	pub fn is_zero(&self) -> bool {
+		self.load() == 0
 	}
 }
 
@@ -66,7 +107,7 @@ impl AddAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(12);
+	/// let rhs = Register::new(12);
 	/// 
 	/// reg += rhs;
 	///
@@ -74,7 +115,7 @@ impl AddAssign for Register {
 	/// ```
 	#[inline]
 	fn add_assign(&mut self, rhs: Self) {
-		self.0 += rhs.0
+		self.store(self.load() + rhs.load());
 	}
 }
 
@@ -86,7 +127,7 @@ impl SubAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(12);
+	/// let rhs = Register::new(12);
 	/// 
 	/// reg -= rhs;
 	///
@@ -94,7 +135,7 @@ impl SubAssign for Register {
 	/// ```
 	#[inline]
 	fn sub_assign(&mut self, rhs: Self) {
-		self.0 -= rhs.0
+		self.store(self.load() - rhs.load());
 	}
 }
 
@@ -106,7 +147,7 @@ impl MulAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(12);
+	/// let rhs = Register::new(12);
 	/// 
 	/// reg *= rhs;
 	///
@@ -114,7 +155,7 @@ impl MulAssign for Register {
 	/// ```
 	#[inline]
 	fn mul_assign(&mut self, rhs: Self) {
-		self.0 *= rhs.0;
+		self.store(self.load() * rhs.load());
 	}
 }
 
@@ -129,7 +170,7 @@ impl DivAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(12);
+	/// let rhs = Register::new(12);
 	/// 
 	/// reg /= rhs;
 	///
@@ -141,7 +182,7 @@ impl DivAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(0);
+	/// let rhs = Register::new(0);
 	/// 
 	/// reg /= rhs; // this fails!
 	/// ```
@@ -149,7 +190,7 @@ impl DivAssign for Register {
 	fn div_assign(&mut self, rhs: Self) {
 		assert!(!rhs.is_zero(), "division by zero!");
 
-		self.0 /= rhs.0;
+		self.store(self.load() / rhs.load());
 	}
 }
 
@@ -164,7 +205,7 @@ impl RemAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(13);
+	/// let rhs = Register::new(13);
 	/// 
 	/// reg %= rhs;
 	///
@@ -176,7 +217,7 @@ impl RemAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(0);
+	/// let rhs = Register::new(0);
 	/// 
 	/// reg %= rhs; // this fails!
 	/// ```
@@ -184,7 +225,7 @@ impl RemAssign for Register {
 	fn rem_assign(&mut self, rhs: Self) {
 		assert!(!rhs.is_zero(), "division by zero!");
 
-		self.0 %= rhs.0;
+		self.store(self.load() % rhs.load());
 	}
 }
 
@@ -196,7 +237,7 @@ impl BitAndAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(13);
+	/// let rhs = Register::new(13);
 	/// 
 	/// reg &= rhs;
 	///
@@ -204,7 +245,7 @@ impl BitAndAssign for Register {
 	/// ```
 	#[inline]
 	fn bitand_assign(&mut self, rhs: Self) {
-		self.0 &= rhs.0;
+		self.store(self.load() & rhs.load());
 	}
 }
 
@@ -216,7 +257,7 @@ impl BitOrAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(13);
+	/// let rhs = Register::new(13);
 	/// 
 	/// reg |= rhs;
 	///
@@ -224,7 +265,7 @@ impl BitOrAssign for Register {
 	/// ```
 	#[inline]
 	fn bitor_assign(&mut self, rhs: Self) {
-		self.0 |= rhs.0;
+		self.store(self.load() | rhs.load());
 	}
 }
 
@@ -236,7 +277,7 @@ impl BitXorAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(13);
+	/// let rhs = Register::new(13);
 	/// 
 	/// reg ^= rhs;
 	///
@@ -244,7 +285,7 @@ impl BitXorAssign for Register {
 	/// ```
 	#[inline]
 	fn bitxor_assign(&mut self, rhs: Self) {
-		self.0 ^= rhs.0;
+		self.store(self.load() ^ rhs.load());
 	}
 }
 
@@ -256,7 +297,7 @@ impl ShlAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(20);
-	/// let rhs = Regiser::new(13);
+	/// let rhs = Register::new(13);
 	/// 
 	/// reg <<= rhs;
 	///
@@ -264,7 +305,7 @@ impl ShlAssign for Register {
 	/// ```
 	#[inline]
 	fn shl_assign(&mut self, rhs: Self) {
-		self.0 <<= rhs.0;
+		self.store(self.load() << rhs.load());
 	}
 }
 
@@ -276,7 +317,7 @@ impl ShrAssign for Register {
 	/// use sjvm::Register;
 	///
 	/// let mut reg = Register::new(49);
-	/// let rhs = Regiser::new(2);
+	/// let rhs = Register::new(2);
 	/// 
 	/// reg >>= rhs;
 	///
@@ -284,7 +325,7 @@ impl ShrAssign for Register {
 	/// ```
 	#[inline]
 	fn shr_assign(&mut self, rhs: Self) {
-		self.0 >>= rhs.0;
+		self.store(self.load() >> rhs.load());
 	}
 }
 
@@ -301,7 +342,7 @@ impl Register {
 	/// ```
 	#[inline]
 	pub fn neg_assign(&mut self) {
-		self.0 = -self.0;
+		self.store(-self.load());
 	}
 
 	/// Sets `self` to the bitwise inverse of itself.
@@ -316,7 +357,7 @@ impl Register {
 	/// ```
 	#[inline]
 	pub fn inv_assign(&mut self) {
-		self.0 = -self.0;
+		self.store(!self.load());
 	}
 
 	/// Sets `self` to the logical negation of itself: `0` becomes `1`, and everything else becomes `0`.
@@ -331,21 +372,24 @@ impl Register {
 	/// ```
 	#[inline]
 	pub fn not_assign(&mut self) {
-		self.0 = !self.is_zero() as i64;
+		self.store(self.is_zero() as Word);
 	}
 }
 
 impl Display for Register {
 	#[inline]
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-		Display::fmt(&self.0, f)
+		if !self.0.is_init() { return write!(f, "<??>"); }
+		Display::fmt(&self.load(), f)
 	}
 }
 
 impl Pointer for Register {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+		if !self.0.is_init() { return write!(f, "<??>"); }
+
 		if f.alternate()  {
-			Pointer::fmt(&(self.0 as *const ()), f)
+			Pointer::fmt(&(self.load() as *const ()), f)
 		} else {
 			f.pad(&format!("0x{:x}", self))
 		}
@@ -355,40 +399,48 @@ impl Pointer for Register {
 
 impl LowerHex for Register {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+		if !self.0.is_init() { return write!(f, "<??>"); }
+
 		if f.alternate() {
-			LowerHex::fmt(&self.0, f)
+			LowerHex::fmt(&self.load(), f)
 		} else {
-			f.pad(&format!("{:016x}", self.0))
+			f.pad(&format!("{:016x}", self.load()))
 		}
 	}
 }
 
 impl UpperHex for Register {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+		if !self.0.is_init() { return write!(f, "<??>"); }
+
 		if f.alternate() {
-			UpperHex::fmt(&self.0, f)
+			UpperHex::fmt(&self.load(), f)
 		} else {
-			f.pad(&format!("{:016X}", self.0))
+			f.pad(&format!("{:016X}", self.load()))
 		}
 	}
 }
 
 impl Octal for Register {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+		if !self.0.is_init() { return write!(f, "<??>"); }
+
 		if f.alternate() {
-			Octal::fmt(&self.0, f)
+			Octal::fmt(&self.load(), f)
 		} else {
-			f.pad(&format!("{:022o}", self.0))
+			f.pad(&format!("{:022o}", self.load()))
 		}
 	}
 }
 
 impl Binary for Register {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+		if !self.0.is_init() { return write!(f, "<??>"); }
+
 		if f.alternate() {
-			Binary::fmt(&self.0, f)
+			Binary::fmt(&self.load(), f)
 		} else {
-			f.pad(&format!("{:064b}", self.0))
+			f.pad(&format!("{:064b}", self.load()))
 		}
 	}
 }
