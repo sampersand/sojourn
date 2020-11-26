@@ -17,3 +17,9 @@ pub use instruction::Instruction;
 
 /// The size of a word in sojourn.
 pub type Word = i64;
+
+/// The size of an unsigned word in sojourn.
+pub type UWord = u64;
+
+sa::assert_eq_align!(Word, UWord);
+sa::assert_eq_size!(Word, UWord);

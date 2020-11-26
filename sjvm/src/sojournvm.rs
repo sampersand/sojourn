@@ -1,52 +1,57 @@
 use sjef::{File, Data, Instruction};
 use sjef::instruction::{Reg, Interrupt};
-use crate::{Word, ByteCode, Stack, Registers, Heap, Pointer};
+use crate::{Word, uw, Text, Stack, Registers};
+use crate::{RegisterTrait, HeapTrait, PointerTrait};
 use read_from::{ReadFrom, WriteTo};
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct SojournVm {
-	pub bytecode: ByteCode,
+pub struct SojournVm<
+	R: RegisterTrait=crate::Register,
+	H: HeapTrait=crate::Heap
+> {
+	pub text: Text,
 	pub stack: Stack,
 	pub data: Data,
-	pub registers: Registers,
-	pub heap: Heap,
+	pub registers: Registers<R>,
+	pub heap: H,
 	flags: u8 // TODO: Flags
 }
+
 const FLAG_EQL: u8 = 0b001;
 const FLAG_LTH: u8 = 0b010;
 const FLAG_GTH: u8 = 0b100;
 
-impl SojournVm {
+impl<R: RegisterTrait, H: HeapTrait> SojournVm<R, H> {
 	pub fn new(file: File) -> Self {
-		let mut bytecode = Vec::new();
-		file.text.write_to(&mut bytecode).expect("writes to vecs cannot file");
+		let mut text = Vec::new();
+		file.text.write_to(&mut text).expect("writes to vecs cannot file");
 
 		Self {
 			stack: Stack::new(),
 			registers: Registers::new(),
 			data: file.data,
-			bytecode: ByteCode::new(bytecode),
-			heap: Heap::new(),
+			text: Text::new(text),
+			heap: H::new(),
 			flags: 0
 		}
 	}
 
 	pub fn step(&mut self) -> Result<(), <Instruction as ReadFrom>::Error> {
-		let instr = Instruction::read_from(&mut self.bytecode)?;
+		let instr = Instruction::read_from(&mut self.text)?;
 		self.execute(instr);
 		Ok(())
 	}
 
 	pub fn run(&mut self) {
-		while !self.bytecode.is_eof() {
+		while !self.text.is_eof() {
 			self.step().expect("couldn't read instruction!");
 		}
 	}
 }
 
 /// Bytecode commands.
-impl SojournVm {
+impl<R: RegisterTrait, H: HeapTrait> SojournVm<R, H> {
 	fn op_nop(&mut self) {
 		debug!("Performed 'nop'. Whee!");
 	}
@@ -55,7 +60,7 @@ impl SojournVm {
 		let value = self.registers[reg].load();
 		self.stack.push(value);
 
-		debug!("Performed 'push'. {}={:x}", reg, value);
+		debug!("Performed 'push'. {}={:016x}", reg, value);
 	}
 
 	fn op_pushw(&mut self, word: Word) {
@@ -73,20 +78,20 @@ impl SojournVm {
 	fn op_pop(&mut self, dst: Reg) {
 		self.registers[dst].store(self.stack.pop().expect("popped from an empty stack!"));
 
-		debug!("Performed 'pop'. {}={:x}", dst, self.registers[dst]);
+		debug!("Performed 'pop'. {}={:016x}", dst, self.registers[dst]);
 	}
 
 	fn op_load(&mut self, dst: Reg, src: Reg) {
-		let ptr = Pointer::from_word(self.registers[dst].load());
+		let ptr = H::Pointer::from_uword(uw(self.registers[dst].load()));
 
 		// SAFETY: Like every other opcode, we have no way to guarantee this is safe. The compiler must do that.
 		self.registers[src].store(unsafe { self.heap.get_word(ptr) });
 
-		debug!("Performed 'load'. {}={:p} -> {}={:x}", dst, self.registers[dst], src, self.registers[src]);
+		debug!("Performed 'load'. {}={:016p} -> {}={:016x}", dst, self.registers[dst], src, self.registers[src]);
 	}
 
 	fn op_store(&mut self, dst: Reg, src: Reg) {
-		let ptr = Pointer::from_word(self.registers[dst].load());
+		let ptr = H::Pointer::from_uword(uw(self.registers[dst].load()));
 		let value = self.registers[src].load();
 
 		// SAFETY: Like every other opcode, we have no way to guarantee this is safe. The compiler must do that.
@@ -94,29 +99,29 @@ impl SojournVm {
 			self.heap.set_word(ptr, value);
 		}
 
-		debug!("Performed 'store'. {}={:p} {}={:x}", dst, self.registers[dst], src, self.registers[src]);
+		debug!("Performed 'store'. {}={:016p} {}={:016x}", dst, self.registers[dst], src, self.registers[src]);
 	}
 
 	fn op_storew(&mut self, dst: Reg, word: Word) {
-		let ptr = Pointer::from_word(self.registers[dst].load());
+		let ptr = H::Pointer::from_uword(uw(self.registers[dst].load()));
 
 		// SAFETY: Like every other opcode, we have no way to guarantee this is safe. The compiler must do that.
 		unsafe {
 			self.heap.set_word(ptr, word);
 		}
 
-		debug!("Performed 'store'. {}={:p} -> {1:p}={:016x}", dst, self.registers[dst], word);
+		debug!("Performed 'store'. {}={:016p} -> {1:p}={:016x}", dst, self.registers[dst], word);
 	}
 
 	fn op_storeb(&mut self, dst: Reg, byte: u8) {
-		let ptr = Pointer::from_word(self.registers[dst].load());
+		let ptr = H::Pointer::from_uword(uw(self.registers[dst].load()));
 
 		// SAFETY: Like every other opcode, we have no way to guarantee this is safe. The compiler must do that.
 		unsafe {
 			self.heap.set_byte(ptr, byte);
 		}
 
-		debug!("Performed 'store'. {}={:p} -> {1:p}={:02x}", dst, self.registers[dst], byte);
+		debug!("Performed 'store'. {}={:016p} -> {1:p}={:02x}", dst, self.registers[dst], byte);
 	}
 
 
@@ -126,26 +131,26 @@ impl SojournVm {
 			self.registers[dst].store(value);
 		}
 
-		debug!("Performed 'mov'. {}={:x} -> {}={:x}", src, self.registers[src], dst, self.registers[dst]);
+		debug!("Performed 'mov'. {}={:016x} -> {}={:016x}", src, self.registers[src], dst, self.registers[dst]);
 	}
 
 	fn op_movw(&mut self, dst: Reg, word: Word) {
 		self.registers[dst].store(word);
 
-		debug!("Performed 'movw'. {}={:x}", dst, self.registers[dst]);
+		debug!("Performed 'movw'. {}={:016x}", dst, self.registers[dst]);
 	}
 
 	fn op_movbsx(&mut self, dst: Reg, sbyte: i8) {
 		self.registers[dst].store(sbyte as i64);
 
-		debug!("Performed 'movwbsx'. {}={:x}", dst, self.registers[dst]);
+		debug!("Performed 'movwbsx'. {}={:016x}", dst, self.registers[dst]);
 	}
 
 	fn op_dbg(&mut self) {
 		// println!("{:#?}", self);
 
 		unsafe {
-			let ptr = Pointer::from_word(self.registers[Reg::RETURN_REG].load());
+			let ptr = H::Pointer::from_uword(uw(self.registers[Reg::RETURN_REG].load()));
 
 			let len = self.heap.get_word(ptr) as usize;
 			let ptr = ptr.offset(std::mem::size_of::<Word>() as isize);
@@ -171,12 +176,12 @@ impl SojournVm {
 			Interrupt::Malloc(reg, size) => {
 				let ptr = self.heap.malloc(size as usize);
 
-				self.registers[reg].store(ptr.into_word());
+				self.registers[reg].store(ptr.into_uword() as Word);
 
-				debug!("Performed 'int' ('malloc'). size={} -> {}={:p}", size, reg, self.registers[reg]);
+				debug!("Performed 'int' ('malloc'). size={} -> {}={:016p}", size, reg, self.registers[reg]);
 			},
 			Interrupt::Free(reg) => {
-				let ptr = Pointer::from_word(self.registers[reg].load());
+				let ptr = H::Pointer::from_uword(uw(self.registers[reg].load()));
 
 				// SAFETY: Lol, we have to hope that whoever called `Free` knows that
 				// they're doing. We have no safety guarantees in release mode. 
@@ -184,17 +189,17 @@ impl SojournVm {
 					self.heap.free(ptr);
 				}
 
-				debug!("Performed 'int' ('free'). {}={:p}", reg, self.registers[reg]);
+				debug!("Performed 'int' ('free'). {}={:016p}", reg, self.registers[reg]);
 			},
 			Interrupt::Realloc(reg, size) => {
 				let old_reg = self.registers[reg];
-				let ptr = Pointer::from_word(old_reg.load());
+				let ptr = H::Pointer::from_uword(uw(old_reg.load()));
 
 				// SAFETY: Lol, we have to hope that whoever called `Realloc` knows that
 				// they're doing. We have no safety guarantees in release mode. 
-				self.registers[reg].store(unsafe { self.heap.realloc(ptr, size as usize) }.into_word());
+				self.registers[reg].store(unsafe { self.heap.realloc(ptr, size as usize) }.into_uword() as Word);
 
-				debug!("Performed 'int' ('realloc'). {}={:p}, new_size={} -> {0}={:p}", reg, old_reg, size,
+				debug!("Performed 'int' ('realloc'). {}={:016p}, new_size={} -> {0}={:016p}", reg, old_reg, size,
 					self.registers[reg]);
 			},
 			other => unimplemented!("interrupt: {:?}", other)
@@ -205,14 +210,14 @@ impl SojournVm {
 		let value = self.registers[reg].load();
 		self.registers[reg].store(value + 1);
 
-		debug!("Performed 'inc'. {}={:x} -> {0}={:x}", reg, value, self.registers[reg]);
+		debug!("Performed 'inc'. {}={:016x} -> {0}={:016x}", reg, value, self.registers[reg]);
 	}
 
 	fn op_dec(&mut self, reg: Reg) {
 		let value = self.registers[reg].load() ;
 		self.registers[reg].store(value - 1);
 
-		debug!("Performed 'dec'. {}={:x} -> {0}={:x}", reg, value, self.registers[reg]);
+		debug!("Performed 'dec'. {}={:016x} -> {0}={:016x}", reg, value, self.registers[reg]);
 	}
 
 	fn op_add(&mut self, reg1: Reg, reg2: Reg) {
@@ -220,7 +225,7 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] += rhs;
 
-		debug!("Performed 'add'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'add'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_sub(&mut self, reg1: Reg, reg2: Reg) {
@@ -228,7 +233,7 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] -= rhs;
 
-		debug!("Performed 'sub'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'sub'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_mul(&mut self, reg1: Reg, reg2: Reg) {
@@ -236,7 +241,7 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] *= rhs;
 
-		debug!("Performed 'mul'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'mul'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_div(&mut self, reg1: Reg, reg2: Reg) {
@@ -244,7 +249,7 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] /= rhs;
 
-		debug!("Performed 'div'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'div'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_mod(&mut self, reg1: Reg, reg2: Reg) {
@@ -252,7 +257,7 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] %= rhs;
 
-		debug!("Performed 'mod'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'mod'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_and(&mut self, reg1: Reg, reg2: Reg) {
@@ -260,7 +265,7 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] &= rhs;
 
-		debug!("Performed 'and'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'and'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_or(&mut self, reg1: Reg, reg2: Reg) {
@@ -268,7 +273,7 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] |= rhs;
 
-		debug!("Performed 'or'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'or'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_xor(&mut self, reg1: Reg, reg2: Reg) {
@@ -276,7 +281,7 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] ^= rhs;
 
-		debug!("Performed 'xor'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'xor'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_lsh(&mut self, reg1: Reg, reg2: Reg) {
@@ -284,7 +289,7 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] <<= rhs;
 
-		debug!("Performed 'lsh'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'lsh'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_rsh(&mut self, reg1: Reg, reg2: Reg) {
@@ -292,28 +297,28 @@ impl SojournVm {
 		let rhs = self.registers[reg2];
 		self.registers[reg1] >>= rhs;
 
-		debug!("Performed 'rsh'. {}={:x} {}={:x} -> {0}={:x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
+		debug!("Performed 'rsh'. {}={:016x} {}={:016x} -> {0}={:016x}", reg1, lhs, reg2, rhs, self.registers[reg1]);
 	}
 
 	fn op_neg(&mut self, reg: Reg) {
 		let value = self.registers[reg];
 		self.registers[reg].neg_assign();
 
-		debug!("Performed 'neg'. {}={:x} -> {0}={:x}", reg, value, self.registers[reg]);
+		debug!("Performed 'neg'. {}={:016x} -> {0}={:016x}", reg, value, self.registers[reg]);
 	}
 
 	fn op_inv(&mut self, reg: Reg) {
 		let value = self.registers[reg];
 		self.registers[reg].inv_assign();
 
-		debug!("Performed 'inv'. {}={:x} -> {0}={:x}", reg, value, self.registers[reg]);
+		debug!("Performed 'inv'. {}={:016x} -> {0}={:016x}", reg, value, self.registers[reg]);
 	}
 
 	fn op_not(&mut self, reg: Reg) {
 		let value = self.registers[reg];
 		self.registers[reg].not_assign();
 
-		debug!("Performed 'not'. {}={:x} -> {0}={:x}", reg, value, self.registers[reg]);
+		debug!("Performed 'not'. {}={:016x} -> {0}={:016x}", reg, value, self.registers[reg]);
 	}
 
 	fn op_cmp(&mut self, reg1: Reg, reg2: Reg) {
@@ -329,20 +334,20 @@ impl SojournVm {
 			std::cmp::Ordering::Greater => self.flags |= FLAG_GTH,
 		}
 
-		debug!("Performed 'cmp'. {}={:x} {}={:x} -> FLAGS={:03b}", reg1, lhs, reg2, rhs, self.flags);
+		debug!("Performed 'cmp'. {}={:016x} {}={:016x} -> FLAGS={:03b}", reg1, lhs, reg2, rhs, self.flags);
 	}
 
 	fn jump_by(&mut self, offset: isize) {
-		let ip = self.bytecode.ip();
+		let ip = self.text.ip();
 
-		self.bytecode.set_ip((ip as isize + offset) as u64);
+		self.text.set_ip((ip as isize + offset) as u64);
 	}
 
 	fn op_jeq(&mut self, offset: i16) {
 		if (self.flags & FLAG_EQL) != 0 {
 			self.jump_by(offset as isize);
 			debug!("Performed 'jeq', and jumped. FLAGS={:03b} offset={:04x} -> ip=0x{:016x}", self.flags,
-				offset, self.bytecode.ip());
+				offset, self.text.ip());
 		} else {
 			debug!("Performed 'jeq', and didn't jump. FLAGS={:03b} offset={:04x}", self.flags, offset);
 		}
@@ -352,7 +357,7 @@ impl SojournVm {
 		if (self.flags & FLAG_EQL) == 0 {
 			self.jump_by(offset as isize);
 			debug!("Performed 'jne', and jumped. FLAGS={:03b} offset={:04x} -> ip=0x{:016x}", self.flags,
-				offset, self.bytecode.ip());
+				offset, self.text.ip());
 		} else {
 			debug!("Performed 'jne', and didn't jump. FLAGS={:03b} offset={:04x}", self.flags, offset);
 		}
@@ -362,7 +367,7 @@ impl SojournVm {
 		if (self.flags & FLAG_LTH) != 0 {
 			self.jump_by(offset as isize);
 			debug!("Performed 'jlt', and jumped. FLAGS={:03b} offset={:04x} -> ip=0x{:016x}", self.flags,
-				offset, self.bytecode.ip());
+				offset, self.text.ip());
 		} else {
 			debug!("Performed 'jlt', and didn't jump. FLAGS={:03b} offset={:04x}", self.flags, offset);
 		}
@@ -372,7 +377,7 @@ impl SojournVm {
 		if (self.flags & FLAG_GTH) == 0 {
 			self.jump_by(offset as isize);
 			debug!("Performed 'jle', and jumped. FLAGS={:03b} offset={:04x} -> ip=0x{:016x}", self.flags,
-				offset, self.bytecode.ip());
+				offset, self.text.ip());
 		} else {
 			debug!("Performed 'jle', and didn't jump. FLAGS={:03b} offset={:04x}", self.flags, offset);
 		}
@@ -382,7 +387,7 @@ impl SojournVm {
 		if (self.flags & FLAG_GTH) != 0 {
 			self.jump_by(offset as isize);
 			debug!("Performed 'jgt', and jumped. FLAGS={:03b} offset={:04x} -> ip=0x{:016x}", self.flags,
-				offset, self.bytecode.ip());
+				offset, self.text.ip());
 		} else {
 			debug!("Performed 'jgt', and didn't jump. FLAGS={:03b} offset={:04x}", self.flags, offset);
 		}
@@ -392,7 +397,7 @@ impl SojournVm {
 		if (self.flags & FLAG_LTH) == 0 {
 			self.jump_by(offset as isize);
 			debug!("Performed 'jge', and jumped. FLAGS={:03b} offset={:04x} -> ip=0x{:016x}", self.flags,
-				offset, self.bytecode.ip());
+				offset, self.text.ip());
 		} else {
 			debug!("Performed 'jge', and didn't jump. FLAGS={:03b} offset={:04x}", self.flags, offset);
 		}
@@ -401,46 +406,46 @@ impl SojournVm {
 	fn op_jmp(&mut self, offset: i16) {
 		self.jump_by(offset as isize);
 
-		debug!("Performed 'jmp', and jumped. offset={:04x} -> ip=0x{:016x}", offset, self.bytecode.ip());
+		debug!("Performed 'jmp', and jumped. offset={:04x} -> ip=0x{:016x}", offset, self.text.ip());
 	}
 
 	fn op_call(&mut self, offset: i16) {
-		let old_ip = self.bytecode.ip() as Word;
+		let old_ip = self.text.ip();
 
-		self.stack.push(old_ip);
+		self.stack.push(old_ip as Word);
 		self.jump_by(offset as isize);
 
-		debug!("Performed 'call'. old_ip=0x{:016x} offset={:04x} -> ip=0x{:016x}", old_ip, offset, self.bytecode.ip());
+		debug!("Performed 'call'. old_ip=0x{:016x} offset={:04x} -> ip=0x{:016x}", old_ip, offset, self.text.ip());
 	}
 
 	fn op_callf(&mut self, offset: Word) {
-		let old_ip = self.bytecode.ip() as Word;
+		let old_ip = self.text.ip();
 
-		self.stack.push(old_ip);
+		self.stack.push(old_ip as Word);
 		self.jump_by(offset as isize);
 
-		debug!("Performed 'callf'. old_ip=0x{:016x} offset={:016x} -> ip=0x{:016x}", old_ip, offset, self.bytecode.ip());
+		debug!("Performed 'callf'. old_ip=0x{:016x} offset={:016x} -> ip=0x{:016x}", old_ip, offset, self.text.ip());
 	}
 
 	fn op_ret(&mut self) {
 		let dst = self.stack.pop().expect("returned from an empty stack?");
 
-		self.bytecode.set_ip(dst as u64);
+		self.text.set_ip(uw(dst));
 
-		debug!("Performed 'ret'. ip={:016x}", self.bytecode.ip());
+		debug!("Performed 'ret'. ip={:016x}", self.text.ip());
 	}
 
 	fn op_lfs(&mut self, reg: Reg, which: u8) {
 		self.registers[reg].store(self.stack.as_ref()[self.stack.as_ref().len() - 2 + which as usize]);
 
-		debug!("Performed 'lfs'. which={} -> {}={:x}", which, reg, self.registers[reg]);
+		debug!("Performed 'lfs'. which={} -> {}={:016x}", which, reg, self.registers[reg]);
 	}
 }
 
-impl SojournVm {
-	#[instrument(level = "debug", skip(self, instr), fields(start_ip=%format!("{:08x}", self.bytecode.ip()), %instr))]
+impl<R: RegisterTrait, H: HeapTrait> SojournVm<R, H> {
+	#[instrument(level = "debug", skip(self, instr), fields(start_ip=%format!("{:08x}", self.text.ip()), %instr))]
 	pub fn execute(&mut self, instr: Instruction) {
-		trace!(?instr, ip=%format!("{:08x}", self.bytecode.ip()), "starting execution");
+		trace!(?instr, ip=%format!("{:08x}", self.text.ip()), "starting execution");
 
 		match instr {
 			Instruction::Nop() => self.op_nop(),
@@ -490,7 +495,7 @@ impl SojournVm {
 			Instruction::Ext(_) => todo!(),
 		};
 
-		trace!(?instr, ip=%format!("{:08x}", self.bytecode.ip()), "finished execution");
+		trace!(?instr, ip=%format!("{:08x}", self.text.ip()), "finished execution");
 	}
 }
 

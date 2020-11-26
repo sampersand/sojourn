@@ -7,7 +7,7 @@ fn main() {
 	tracing::info!("Reading file in...");
 	let file = File::read_from(std::fs::File::open("parser-ruby/test.sjc").unwrap()).expect("bad file");
 	tracing::info!("Running vm...");
-	let mut vm = SojournVm::new(file);
+	let mut vm = SojournVm::<sjvm::register::release::Register, sjvm::heap::release::Heap>::new(file);
 	vm.run();
 }
 

@@ -1,0 +1,8 @@
+var-decl := 'var' pattern '=' expr ;
+assignment := [{ paren-or-ident '.' } paren-or-ident] ('[' expr ']' | ident) ASSIGN_OP expr;
+primary := ident | '(' expr ')'  ;
+field-assigment := 
+
+(* in the future, this will be expanded *)
+pattern := ident [':' TYPENAME] ;
+ident := ['@'] NORMAL_IDENTIFIER ;

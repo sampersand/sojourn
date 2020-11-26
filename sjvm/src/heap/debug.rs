@@ -1,17 +1,20 @@
-use crate::{Byte, Word};
+use crate::{Word, UWord};
 use std::collections::HashMap;
 use std::fmt::{self, Formatter};
 use std::ops::RangeInclusive;
 use std::mem::size_of;
+use super::{HeapTrait, PointerTrait};
 
-/// The debug-mode representation of the heap.
+type Byte = Option<u8>;
+
+/// The self-hosted representation of the heap.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Heap {
 	map: HashMap<Pointer, Vec<Byte>>,
 	ranges: Vec<RangeInclusive<Pointer>>
 }
 
-/// A debug-mode pointer.
+/// A self-hosted pointer.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pointer(usize);
 
@@ -21,17 +24,13 @@ impl fmt::Pointer for Pointer {
 	}
 }
 
-impl Pointer {
-	/// Checks to see if the pointer's null.
+impl PointerTrait for Pointer {
 	#[inline]
-	pub fn is_null(&self) -> bool {
+	fn is_null(&self) -> bool {
 		self.0 == 0
 	}
 
-	/// Offsets this pointer by the given amount.
-	///
-	/// # SAFETY: Todo... (lol)
-	pub unsafe fn offset(self, amnt: isize) -> Self {
+	unsafe fn offset(self, amnt: isize) -> Self {
 		if amnt < 0 {
 			Self(self.0 - amnt.abs() as usize)
 		} else {
@@ -39,21 +38,18 @@ impl Pointer {
 		}
 	}
 
-	/// Converts this pointer into a [`Word`].
 	#[inline]
-	pub fn into_word(self) -> Word {
-		self.0 as Word
+	fn into_uword(self) -> UWord {
+		self.0 as UWord
 	}
 
-	/// Creates a pointer from the given [`Word`].
-	///
-	/// # Safety
-	/// While creating this pointer from a word isn't unsafe in-and-of itself, using it will be.
 	#[inline]
-	pub fn from_word(word: Word) -> Self {
+	fn from_uword(word: UWord) -> Self {
 		Self(word as usize)
 	}
+}
 
+impl Pointer {
 	fn for_size(len: usize) -> Self {
 		use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 		static POINTER_INCR: AtomicUsize = AtomicUsize::new(1);
@@ -65,51 +61,9 @@ impl Pointer {
 }
 
 impl Heap {
-	/// Creates a new [`Heap`].
-	pub fn new() -> Self {
-		Self {
-			map: HashMap::new(),
-			ranges: Vec::new()
-		}
-	}
-
-	/// Creates a new [`Heap`] with the given starting capacity.
-	pub fn with_capacity(capacity: usize) -> Self {
-		Self {
-			map: HashMap::with_capacity(capacity),
-			ranges: Vec::new()
-		}
-	}
-
-	/// Get a new pointer to memory.
-	///
-	/// If `size` is zero, a null pointer will be returned.
-	pub fn malloc(&mut self, size: usize) -> Pointer {
-		if size == 0 {
-			return Pointer::default();
-		}
-
-		let pointer = Pointer::for_size(size);
-		self.insert(pointer, vec![Default::default(); size], size);
-		pointer
-	}
-
 	fn insert(&mut self, pointer: Pointer, vec: Vec<Byte>, size: usize) {
 		self.map.insert(pointer, vec);
 		self.ranges.push(pointer..=Pointer(pointer.0 + size));
-	}
-
-	/// Frees the memory pointer to by `ptr`, which should be `size` bytes in length.
-	///
-	/// # Safety
-	/// It's up to the caller to ensure that `ptr` is a valid pointer that was returned from [`Heap::malloc`] or 
-	/// [`Heap::realloc`] and that it hasn't been freed already.
-	pub unsafe fn free(&mut self, ptr: Pointer) {
-		if ptr.is_null() {
-			return;
-		}
-
-		self.remove(ptr);
 	}
 
 	fn remove(&mut self, ptr: Pointer) -> Vec<Byte> {
@@ -129,16 +83,41 @@ impl Heap {
 
 		panic!("internal error: ptr ({:p}) removed, but wasn't in ranges.\nheap={:?}", ptr, self);
 	}
+}
 
-	/// Reallocates the memory pointer to by `ptr`, which should be `size` bytes in length.
-	///
-	/// If `ptr` is null or `new_size` is zero, this is equivalent to calling [`Heap::free`] and returning a null
-	/// pointer.
-	///
-	/// # Safety
-	/// It's up to the caller to ensure that `ptr` is a valid pointer that was returned from [`Heap::malloc`] or 
-	/// [`Heap::realloc`].
-	pub unsafe fn realloc(&mut self, ptr: Pointer, new_size: usize) -> Pointer {
+impl HeapTrait for Heap {
+	type Pointer = Pointer;
+
+	fn new() -> Self {
+		Self::default()
+	}
+
+	fn with_capacity(capacity: usize) -> Self {
+		Self { map: HashMap::with_capacity(capacity), ranges: Vec::new() }
+	}
+
+	#[instrument(level="debug")]
+	fn malloc(&mut self, size: usize) -> Self::Pointer {
+		if size == 0 {
+			return Default::default();
+		}
+
+		let pointer = Pointer::for_size(size);
+		self.insert(pointer, vec![Default::default(); size], size);
+		pointer
+	}
+
+	#[instrument(level="debug")]
+	unsafe fn free(&mut self, ptr: Pointer) {
+		if ptr.is_null() {
+			return;
+		}
+
+		self.remove(ptr);
+	}
+
+	#[instrument(level="debug")]
+	unsafe fn realloc(&mut self, ptr: Pointer, new_size: usize) -> Pointer {
 		if ptr.is_null() || new_size == 0 {
 			self.free(ptr);
 			return Pointer::default();			
@@ -153,12 +132,8 @@ impl Heap {
 		new_ptr
 	}
 
-	/// Dereferences the pointer, returning the word it points to.
-	///
-	/// # Safety
-	/// It's up to the caller to ensure that `ptr` is a valid pointer that was returned from [`Heap::malloc`] or 
-	/// [`Heap::realloc`], and that it's aligned for [`Word`]-dereferencing.
-	pub unsafe fn get_word(&self, ptr: Pointer) -> Word {
+	#[instrument(level="trace")]
+	unsafe fn get_word(&self, ptr: Pointer) -> Word {
 		for range in &self.ranges {
 			if range.contains(&ptr) {
 				let vec = &self.map[range.start()];
@@ -170,7 +145,7 @@ impl Heap {
 				let mut bytes = [0; size_of::<Word>()];
 
 				for i in 0..size_of::<Word>() {
-					bytes[i] = *vec[idx + i].get();
+					bytes[i] = vec[idx + i].expect("attempted to read an uninitialized byte!");
 				}
 
 				return Word::from_le_bytes(bytes);
@@ -180,12 +155,8 @@ impl Heap {
 		panic!("Attempted to get a word in unmapped memory at {:p}\nheap={:?}", ptr, self);
 	}
 
-	/// Dereferences the pointer, returning the word it points to.
-	///
-	/// # Safety
-	/// It's up to the caller to ensure that `ptr` is a valid pointer that was returned from [`Heap::malloc`] or 
-	/// [`Heap::realloc`], and that it's aligned for [`Word`]-dereferencing.
-	pub unsafe fn get_byte(&self, ptr: Pointer) -> u8 {
+	#[instrument(level="trace")]
+	unsafe fn get_byte(&self, ptr: Pointer) -> u8 {
 		for range in &self.ranges {
 			if range.contains(&ptr) {
 				let vec = &self.map[range.start()];
@@ -193,19 +164,15 @@ impl Heap {
 				assert!(idx < vec.len(), "Attempted get a byte in not-fully-mapped memory at {:p} (range={:?})\nheap={:?}",
 					ptr, range, self);
 
-				return *vec[idx].get();
+				return vec[idx].expect("attempted to read an uninitialized byte");
 			}
 		}
 
 		panic!("Attempted to get a byte in unmapped memory at {:p}\nheap={:?}", ptr, self);
 	}
 
-	/// Stores the word at the value the pointer points to.
-	///
-	/// # Safety
-	/// It's up to the caller to ensure that `ptr` is a valid pointer that was returned from [`Heap::malloc`] or 
-	/// [`Heap::realloc`], and that it's aligned for [`Word`]-dereferencing.
-	pub unsafe fn set_word(&mut self, ptr: Pointer, word: Word) {
+	#[instrument(level="trace")]
+	unsafe fn set_word(&mut self, ptr: Pointer, word: Word) {
 		for range in &self.ranges {
 			if range.contains(&ptr) {
 				let vec = &mut self.map.get_mut(range.start()).expect("internal error: ranges/heap don't align");
@@ -218,7 +185,7 @@ impl Heap {
 				let bytes = word.to_le_bytes();
 
 				for i in 0..size_of::<Word>() {
-					vec[idx + i].set(bytes[i]);
+					vec[idx + i] = Some(bytes[i]);
 				}
 
 				return;
@@ -228,12 +195,8 @@ impl Heap {
 		panic!("Attempted to store a word in unmapped memory at {:p}\nheap={:?}", ptr, self);
 	}
 
-	/// Stores the byte at the value the pointer points to.
-	///
-	/// # Safety
-	/// It's up to the caller to ensure that `ptr` is a valid pointer that was returned from [`Heap::malloc`] or 
-	/// [`Heap::realloc`].
-	pub unsafe fn set_byte(&mut self, ptr: Pointer, byte: u8) {
+	#[instrument(level="trace")]
+	unsafe fn set_byte(&mut self, ptr: Pointer, byte: u8) {
 		for range in &self.ranges {
 			if range.contains(&ptr) {
 				let vec = &mut self.map.get_mut(range.start()).expect("internal error: ranges/heap don't align");
@@ -241,12 +204,19 @@ impl Heap {
 				assert!(idx < vec.len(),
 					"Attempted store a byte in not-fully-mapped memory at {:p} (range={:?})\nheap={:?}", ptr, range, self);
 
-				vec[idx].set(byte);
+				vec[idx] = Some(byte);
 
 				return;
 			}
 		}
 
 		panic!("Attempted to store a byte in unmapped memory at {:p}\nheap={:?}", ptr, self);
+	}
+}
+
+impl Drop for Heap {
+	fn drop(&mut self) {
+		assert_eq!(self.map.len(), self.ranges.len(), "map and ranges mismatch.\nheap: {:#?}", self);
+		assert!(self.map.is_empty(), "leaked memory encountered!\nheap: {:#?}", self)
 	}
 }

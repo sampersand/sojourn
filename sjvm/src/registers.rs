@@ -1,7 +1,6 @@
-use crate::Register;
 use sjef::instruction::Reg;
 use std::ops::{Index, IndexMut};
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 const NUM_REGISTERS: usize = u8::MAX as usize;
 
@@ -9,25 +8,25 @@ const NUM_REGISTERS: usize = u8::MAX as usize;
 /// 
 /// This doesn't include special registers, such as the instruction / stack pointer.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Registers([Register; NUM_REGISTERS]);
+pub struct Registers<R>([R; NUM_REGISTERS]);
 
-impl Default for Registers {
+impl<R: Default + Copy> Default for Registers<R> {
 	#[inline]
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl Registers {
+impl<R: Default + Copy> Registers<R> {
 	/// Get an empty list of registers.
 	#[inline]
-	pub const fn new() -> Self {
-		Self([Register::const_default(); NUM_REGISTERS])
+	pub fn new() -> Self {
+		Self([R::default(); NUM_REGISTERS])
 	}
 }
 
-impl Index<Reg> for Registers {
-	type Output = Register;
+impl<R> Index<Reg> for Registers<R> {
+	type Output = R;
 
 	/// Gets the `nth` register.
 	///
@@ -44,7 +43,7 @@ impl Index<Reg> for Registers {
 	}
 }
 
-impl IndexMut<Reg> for Registers {
+impl<R> IndexMut<Reg> for Registers<R> {
 	/// Gets the `nth` register.
 	///
 	/// # Panics
@@ -59,7 +58,7 @@ impl IndexMut<Reg> for Registers {
 	}
 }
 
-impl Debug for Registers {
+impl<R: Display> Debug for Registers<R> {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
 		write!(f, "[{}", self.0[0])?;
 

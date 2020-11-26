@@ -9,8 +9,10 @@ description = "Sojourn's VM"
 mock-heap = []
 memcheck = ["mock-heap"]
 regcheck = []
+checked-uword-conversions = []
 
-debug = ["mock-heap", "memcheck", "regcheck"]
+optimize = []
+debug = ["regcheck", "checked-uword-conversions"]
 default = ["debug"]
 
 [dependencies]

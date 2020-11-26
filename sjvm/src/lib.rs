@@ -1,26 +1,32 @@
+#[macro_use]
+extern crate cfg_if;
+
 extern crate static_assertions as sa;
 
 #[macro_use]
 extern crate tracing;
 
 #[doc(inline)]
-pub use sjef::Word;
+pub use sjef::{Word, UWord};
 
-pub type Byte = MaybeUninit<u8>;
+#[cfg_attr(not(feature="checked-uword-conversions"), inline(always))]
+fn uw(word: Word) -> UWord {
+	#[cfg(feature="checked-uword-conversions")]
+	{ ::std::convert::TryInto::<crate::UWord>::try_into(word).expect("unable to convert to a uword!") }
+	#[cfg(not(feature="checked-uword-conversions"))]
+	{ word as UWord }
+}
 
-mod maybe_uninit;
-mod heap;
 mod stack;
-mod register;
 mod registers;
-mod bytecode;
 mod sojournvm;
+pub mod text;
+pub mod register;
+pub mod heap;
  
- // TODO: sojourn vm, but it can take a seek type.
-pub use maybe_uninit::MaybeUninit;
-pub use heap::{Heap, Pointer};
+pub use heap::{HeapTrait, PointerTrait, Heap, Pointer};
 pub use stack::Stack;
-pub use register::Register;
-pub use bytecode::ByteCode;
+pub use register::{RegisterTrait, Register};
+pub use text::Text;
 pub use registers::Registers;
 pub use sojournvm::SojournVm;

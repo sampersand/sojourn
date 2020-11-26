@@ -1,13 +1,14 @@
+use crate::UWord;
 use std::io::{self, Read, Seek, SeekFrom, Cursor};
 use std::fmt::{self, Debug, Formatter};
 
 /// This struct houses the bytecode for SojournVm, and is used to keep track of execution flow.
 #[derive(Default, Clone, PartialEq, Eq)]
-pub struct ByteCode {
+pub struct Text {
 	cursor: Cursor<Vec<u8>>
 }
 
-impl ByteCode {
+impl Text {
 	/// Create a new [`ByeCode`] from the given iterator.
 	pub fn new(bytecode: impl IntoIterator<Item=u8>) -> Self {
 		Self { cursor: Cursor::new(bytecode.into_iter().collect()) }
@@ -15,13 +16,13 @@ impl ByteCode {
 
 	/// Gets the current instruction pointer's position.
 	#[inline]
-	pub fn ip(&self) -> u64 {
+	pub fn ip(&self) -> UWord {
 		self.cursor.position()
 	}
 
 	/// Sets the instruction pointer's position.
 	#[inline]
-	pub fn set_ip(&mut self, new_ip: u64) {
+	pub fn set_ip(&mut self, new_ip: UWord) {
 		self.cursor.set_position(new_ip);
 	}
 
@@ -33,11 +34,11 @@ impl ByteCode {
 
 	/// Checks to see if we're at eof.
 	pub fn is_eof(&self) -> bool {
-		self.ip() >= self.bytes().len() as u64
+		self.ip() >= self.bytes().len() as UWord
 	}
 }
 
-impl Debug for ByteCode {
+impl Debug for Text {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
 		let bytes = self.bytes();
 
@@ -55,7 +56,7 @@ impl Debug for ByteCode {
 	}
 }
 
-impl Read for ByteCode {
+impl Read for Text {
 	#[inline]
 	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 		self.cursor.read(buf)
@@ -67,7 +68,7 @@ impl Read for ByteCode {
 	}
 }
 
-impl Seek for ByteCode {
+impl Seek for Text {
 	#[inline]
 	fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
 		self.cursor.seek(pos)
